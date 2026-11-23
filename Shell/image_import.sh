@@ -45,24 +45,17 @@ detect_arch() {
 IMAGES_BASE_URL="https://github.com/xkatld/lxdapi-web-server/releases/download/image"
 
 declare -a IMAGE_LIST=(
-    "almalinux-8"
-    "almalinux-9"
-    "alpine-320"
     "alpine-321"
     "alpine-322"
-    "archlinux-latest"
+    "alpine-323"
+    "alpine-324"
+    "alpine-edge"
     "centos-9-Stream"
-    "debian-11"
+    "centos-10-Stream"
     "debian-12"
     "debian-13"
-    "fedora-42"
-    "fedora-43"
-    "opensuse-156"
-    "opensuse-tumbleweed"
-    "rockylinux-8"
-    "rockylinux-9"
-    "ubuntu-2204"
-    "ubuntu-2404"
+    "debian-14"
+    "debian-sid"
 )
 
 download_and_import() {
@@ -97,10 +90,9 @@ download_and_import() {
 show_image_list() {
     echo
     echo "============================================================================================================"
-    echo " [1] almalinux-8       [2] almalinux-9      [3] alpine-320       [4] alpine-321       [5] alpine-322"
-    echo " [6] archlinux-latest  [7] centos-9-Stream  [8] debian-11        [9] debian-12       [10] debian-13"
-    echo "[11] fedora-42        [12] fedora-43       [13] opensuse-156    [14] opensuse-tumbleweed"
-    echo "[15] rockylinux-8     [16] rockylinux-9    [17] ubuntu-2204     [18] ubuntu-2404"
+    echo " [1] alpine-321       [2] alpine-322       [3] alpine-323       [4] alpine-324       [5] alpine-edge"
+    echo " [6] centos-9-Stream 仅支持arm64           [7] centos-10-Stream [8] debian-12        [9] debian-13"
+    echo "[10] debian-14        [11] debian-sid"
     echo "============================================================================================================"
     echo
 }
@@ -110,8 +102,8 @@ menu_import() {
     info "=== 导入镜像 ==="
     show_image_list
     
-    reading "输入编号，多个用空格或逗号分隔，或输入 all 全部导入 [默认 8 9 17 18]：" image_choices
-    image_choices=${image_choices:-"8 9 17 18"}
+    reading "输入编号，多个用空格或逗号分隔，或输入 all 全部导入 [默认 8 9]：" image_choices
+    image_choices=${image_choices:-"8 9"}
     
     local image_type="lxc"
     
@@ -142,6 +134,11 @@ menu_import() {
     for img in "${selected_images[@]}"; do
         current=$((current + 1))
         echo "[$current/${#selected_images[@]}]"
+        if [[ "$img" == "centos-9-Stream" && "$ARCH" == "amd64" ]]; then
+            warn "centos-9-Stream 仅支持 arm64 架构，当前架构为 amd64，已跳过下载"
+            echo
+            continue
+        fi
         download_and_import "$img" "$image_type"
         echo
     done
