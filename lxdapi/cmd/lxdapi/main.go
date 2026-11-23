@@ -348,7 +348,7 @@ func main() {
 			"author":      "xkatld",
 			"project":     "https://github.com/xkatld/lxdapi-web-server",
 			"description": "主流财务系统对接支持，提供完整的Web管理界面与RESTful API",
-			"version":     "v2.1.3",
+			"version":     "v2.1.5",
 			"name":        sysInfo.Name,
 			"arch":        sysInfo.Arch,
 		})

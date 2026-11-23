@@ -21,7 +21,7 @@ type SystemInfo struct {
 func GetSystemInfo() *SystemInfo {
 	info := &SystemInfo{
 		Name:        "lxdapi",
-		Version:     "v2.1.3",
+		Version:     "v2.1.5",
 		Description: "LXD容器管理后端API服务",
 		OS:          runtime.GOOS,
 		Arch:        runtime.GOARCH,
