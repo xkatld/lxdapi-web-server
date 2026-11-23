@@ -117,14 +117,6 @@ func reset_admin_attempts(client_ip string) {
 }
 
 // GetCaptcha 获取验证码
-// @Summary 获取登录验证码
-// @Description 生成图片验证码用于管理员登录
-// @Tags Admin API - 认证
-// @Accept json
-// @Produce json
-// @Success 200 {object} object{code=int,captcha_id=string,image=string} "生成成功"
-// @Failure 500 {object} response.Response "生成失败"
-// @Router /api/admin/captcha [get]
 func GetCaptcha(c *gin.Context) {
 	driver := base64Captcha.NewDriverDigit(80, 240, 4, 0.7, 80)
 	captcha := base64Captcha.NewCaptcha(driver, captchaStore)
@@ -146,16 +138,6 @@ func GetCaptcha(c *gin.Context) {
 }
 
 // Login 管理员登录
-// @Summary 管理员登录
-// @Description 使用用户名、密码和验证码登录管理后台
-// @Tags Admin API - 认证
-// @Accept json
-// @Produce json
-// @Param request body object{username=string,password=string,captcha=string} true "登录信息"
-// @Success 200 {object} response.Response "登录成功"
-// @Failure 400 {object} response.Response "参数错误或验证码错误"
-// @Failure 401 {object} response.Response "用户名或密码错误"
-// @Router /api/admin/login [post]
 func Login(c *gin.Context) {
 	var req struct {
 		Username string `json:"username" binding:"required"`
@@ -220,14 +202,6 @@ func Login(c *gin.Context) {
 }
 
 // Logout 管理员登出
-// @Summary 管理员登出
-// @Description 退出管理后台登录
-// @Tags Admin API - 认证
-// @Accept json
-// @Produce json
-// @Success 200 {object} response.Response "登出成功"
-// @Security SessionAuth
-// @Router /api/admin/logout [post]
 func Logout(c *gin.Context) {
 	session := sessions.Default(c)
 	session.Clear()

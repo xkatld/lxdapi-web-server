@@ -11,19 +11,6 @@ import (
 )
 
 // AllocatePortMapping 分配端口映射（统一接口）
-// @Summary 分配端口映射
-// @Description 为容器分配端口映射，通过version参数区分IPv4/IPv6
-// @Tags System API - 端口映射管理
-// @Accept json
-// @Produce json
-// @Param version query string true "IP版本: v4 或 v6"
-// @Param request body object true "映射参数"
-// @Success 200 {object} response.Response "分配成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Failure 500 {object} response.Response "分配失败"
-// @Security ApiKeyAuth
-// @Router /api/system/port-mapping/allocate [post]
 func AllocatePortMapping(c *gin.Context) {
 	version := c.Query("version")
 	if version != "v4" && version != "v6" {
@@ -90,18 +77,6 @@ func AllocatePortMapping(c *gin.Context) {
 }
 
 // ReleasePortMapping 释放端口映射（统一接口）
-// @Summary 释放端口映射
-// @Description 释放端口映射，通过version参数区分IPv4/IPv6
-// @Tags System API - 端口映射管理
-// @Accept json
-// @Produce json
-// @Param version query string true "IP版本: v4 或 v6"
-// @Param request body object true "映射ID"
-// @Success 200 {object} response.Response "释放成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 500 {object} response.Response "释放失败"
-// @Security ApiKeyAuth
-// @Router /api/system/port-mapping/release [post]
 func ReleasePortMapping(c *gin.Context) {
 	version := c.Query("version")
 	if version != "v4" && version != "v6" {
@@ -140,17 +115,6 @@ func ReleasePortMapping(c *gin.Context) {
 }
 
 // ListPortMappings 获取端口映射列表（统一接口）
-// @Summary 获取端口映射列表
-// @Description 获取端口映射列表，通过version参数区分，支持按容器筛选
-// @Tags System API - 端口映射管理
-// @Accept json
-// @Produce json
-// @Param version query string false "IP版本: v4/v6/all，默认all"
-// @Param container query string false "容器名称（可选）"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security ApiKeyAuth
-// @Router /api/system/port-mapping [get]
 func ListPortMappings(c *gin.Context) {
 	version := c.DefaultQuery("version", "all")
 	containerName := c.Query("container")

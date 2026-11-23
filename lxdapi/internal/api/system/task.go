@@ -9,17 +9,6 @@ import (
 )
 
 // GetTask 获取任务详情
-// @Summary 获取任务详情
-// @Description 获取指定任务的详细信息
-// @Tags System API - 任务管理
-// @Accept json
-// @Produce json
-// @Param id query string true "任务ID"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 404 {object} response.Response "任务不存在"
-// @Security ApiKeyAuth
-// @Router /api/system/tasks/detail [get]
 func GetTask(c *gin.Context) {
 	idStr := c.Query("id")
 	if idStr == "" {
@@ -43,16 +32,6 @@ func GetTask(c *gin.Context) {
 }
 
 // ListTasks 获取任务列表
-// @Summary 获取任务列表
-// @Description 获取任务列表，可按容器过滤
-// @Tags System API - 任务管理
-// @Accept json
-// @Produce json
-// @Param name query string false "容器名称（可选）"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security ApiKeyAuth
-// @Router /api/system/tasks [get]
 func ListTasks(c *gin.Context) {
 	containerName := c.Query("name")
 	

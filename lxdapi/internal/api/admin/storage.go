@@ -9,10 +9,6 @@ import (
 )
 
 // GetStoragePools 获取存储池列表
-// @Summary 获取存储池列表
-// @Tags Admin API - 存储池管理
-// @Success 200 {object} response.Response
-// @Router /api/admin/storage-pools [get]
 func GetStoragePools(c *gin.Context) {
 	svc := service.NewStorageService()
 	pools, err := svc.List()
@@ -58,10 +54,6 @@ func GetStoragePools(c *gin.Context) {
 }
 
 // SyncStoragePools 同步存储池
-// @Summary 从LXD同步存储池
-// @Tags Admin API - 存储池管理
-// @Success 200 {object} response.Response
-// @Router /api/admin/storage-pools/sync [post]
 func SyncStoragePools(c *gin.Context) {
 	svc := service.NewStorageService()
 	added, updated, deleted, err := svc.SyncFromLXD(c.Request.Context())
@@ -81,12 +73,6 @@ func SyncStoragePools(c *gin.Context) {
 }
 
 // SetStoragePoolPriority 设置存储池优先级
-// @Summary 设置存储池优先级
-// @Tags Admin API - 存储池管理
-// @Param name path string true "存储池名称"
-// @Param priority body int true "优先级"
-// @Success 200 {object} response.Response
-// @Router /api/admin/storage-pools/:name/priority [put]
 func SetStoragePoolPriority(c *gin.Context) {
 	name := c.Param("name")
 	var req struct {

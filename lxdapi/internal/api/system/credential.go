@@ -8,17 +8,6 @@ import (
 )
 
 // GetContainerCredential 获取容器访问码
-// @Summary 获取容器访问码
-// @Description 获取容器的访问码，如果不存在则自动创建
-// @Tags System API - 凭证管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 400 {object} response.Response "缺少容器名称"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security ApiKeyAuth
-// @Router /api/system/containers/{name}/credential [get]
 func GetContainerCredential(c *gin.Context) {
 	containerName := c.Param("name")
 	if containerName == "" {
@@ -46,17 +35,6 @@ func GetContainerCredential(c *gin.Context) {
 }
 
 // RegenerateContainerCredential 重新生成容器访问码
-// @Summary 重新生成容器访问码
-// @Description 重新生成容器的访问码
-// @Tags System API - 凭证管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Success 200 {object} response.Response "生成成功"
-// @Failure 400 {object} response.Response "缺少容器名称"
-// @Failure 500 {object} response.Response "生成失败"
-// @Security ApiKeyAuth
-// @Router /api/system/containers/{name}/credential/regenerate [post]
 func RegenerateContainerCredential(c *gin.Context) {
 	containerName := c.Param("name")
 	if containerName == "" {

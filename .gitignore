@@ -2,7 +2,6 @@
 lxdapi-amd64
 lxdapi-arm64
 cmd/lxdapi/templates/
-cmd/lxdapi/docs/
 cmd/lxdapi/lxdapi
 fmis/fossbilling/Product
 zjmf-n/

@@ -9,16 +9,6 @@ import (
 	"lxdapi/pkg/response"
 )
 
-// GetTemplateList 获取模板列表
-// @Summary 获取模板列表
-// @Description 获取当前用户可用的容器模板列表
-// @Tags User API - 模板管理
-// @Accept json
-// @Produce json
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security UserSession
-// @Router /api/user/templates [get]
 func GetTemplateList(c *gin.Context) {
 	username, _ := c.Get("username")
 	

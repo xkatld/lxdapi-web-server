@@ -17,16 +17,6 @@ import (
 )
 
 // GetIPList 获取IP绑定列表（统一接口）
-// @Summary 获取IP绑定列表
-// @Description 获取IP绑定列表
-// @Tags Admin API - IP管理
-// @Accept json
-// @Produce json
-// @Param version query string false "IP版本: v4/v6/all，默认all"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security SessionAuth
-// @Router /api/admin/ip [get]
 var ifaceNameRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,14}$`)
 
 func isValidInterfaceName(name string) bool {
@@ -66,19 +56,6 @@ func GetIPList(c *gin.Context) {
 }
 
 // AllocateIP 分配IP（统一接口）
-// @Summary 分配IP
-// @Description 为容器分配IP地址
-// @Tags Admin API - IP管理
-// @Accept json
-// @Produce json
-// @Param version query string true "IP版本: v4 或 v6"
-// @Param request body object true "分配参数"
-// @Success 200 {object} response.Response "分配成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Failure 500 {object} response.Response "分配失败"
-// @Security SessionAuth
-// @Router /api/admin/ip/allocate [post]
 func AllocateIP(c *gin.Context) {
 	version := c.Query("version")
 	if version != "v4" && version != "v6" {
@@ -148,18 +125,6 @@ func AllocateIP(c *gin.Context) {
 }
 
 // ReleaseIP 释放IP（统一接口）
-// @Summary 释放IP
-// @Description 释放容器的IP地址
-// @Tags Admin API - IP管理
-// @Accept json
-// @Produce json
-// @Param version query string true "IP版本: v4 或 v6"
-// @Param request body object true "释放参数"
-// @Success 200 {object} response.Response "释放成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 500 {object} response.Response "释放失败"
-// @Security SessionAuth
-// @Router /api/admin/ip/release [post]
 func ReleaseIP(c *gin.Context) {
 	version := c.Query("version")
 	if version != "v4" && version != "v6" {
@@ -207,15 +172,6 @@ func ReleaseIP(c *gin.Context) {
 }
 
 // GetIPPool 获取IP地址池（统一接口）
-// @Summary 获取IP地址池
-// @Description 获取IP地址池列表
-// @Tags Admin API - IP管理
-// @Accept json
-// @Produce json
-// @Param version query string true "IP版本: v4 或 v6"
-// @Success 200 {object} response.Response "获取成功"
-// @Security SessionAuth
-// @Router /api/admin/ip/pool [get]
 func GetIPPool(c *gin.Context) {
 	version := c.Query("version")
 	if version != "v4" && version != "v6" {
@@ -245,18 +201,6 @@ func GetIPPool(c *gin.Context) {
 }
 
 // AddIPToPool 添加IP到地址池（统一接口）
-// @Summary 添加IP到地址池
-// @Description 添加IP地址到地址池
-// @Tags Admin API - IP管理
-// @Accept json
-// @Produce json
-// @Param version query string true "IP版本: v4 或 v6"
-// @Param request body object true "IP信息"
-// @Success 200 {object} response.Response "添加成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 500 {object} response.Response "添加失败"
-// @Security SessionAuth
-// @Router /api/admin/ip/pool [post]
 func AddIPToPool(c *gin.Context) {
 	version := c.Query("version")
 	if version != "v4" && version != "v6" {
@@ -329,19 +273,6 @@ func AddIPToPool(c *gin.Context) {
 }
 
 // UpdateIPPool 更新IP池备注（统一接口）
-// @Summary 更新IP池备注
-// @Description 更新IP地址池中IP的备注
-// @Tags Admin API - IP管理
-// @Accept json
-// @Produce json
-// @Param version query string true "IP版本: v4 或 v6"
-// @Param request body object true "更新参数"
-// @Success 200 {object} response.Response "更新成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 404 {object} response.Response "IP不存在"
-// @Failure 500 {object} response.Response "更新失败"
-// @Security SessionAuth
-// @Router /api/admin/ip/pool [put]
 func UpdateIPPool(c *gin.Context) {
 	version := c.Query("version")
 	if version != "v4" && version != "v6" {
@@ -387,19 +318,6 @@ func UpdateIPPool(c *gin.Context) {
 }
 
 // DeleteIPFromPool 从地址池删除IP（统一接口）
-// @Summary 从地址池删除IP
-// @Description 从地址池中删除IP
-// @Tags Admin API - IP管理
-// @Accept json
-// @Produce json
-// @Param version query string true "IP版本: v4 或 v6"
-// @Param request body object true "IP地址"
-// @Success 200 {object} response.Response "删除成功"
-// @Failure 400 {object} response.Response "参数错误或IP正在使用"
-// @Failure 404 {object} response.Response "IP不存在"
-// @Failure 500 {object} response.Response "删除失败"
-// @Security SessionAuth
-// @Router /api/admin/ip/pool [delete]
 func DeleteIPFromPool(c *gin.Context) {
 	version := c.Query("version")
 	if version != "v4" && version != "v6" {
@@ -499,18 +417,6 @@ func BatchDeleteIPFromPool(c *gin.Context) {
 }
 
 // BatchAddIPToPool 批量添加IP到地址池（统一接口）
-// @Summary 批量添加IP到地址池
-// @Description 批量添加IP地址到地址池，v4使用start_ip+end_ip范围，v6使用start_ip+count数量
-// @Tags Admin API - IP管理
-// @Accept json
-// @Produce json
-// @Param version query string true "IP版本: v4 或 v6"
-// @Param request body object true "IP参数"
-// @Success 200 {object} response.Response "添加成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 500 {object} response.Response "添加失败"
-// @Security SessionAuth
-// @Router /api/admin/ip/pool/batch [post]
 func BatchAddIPToPool(c *gin.Context) {
 	version := c.Query("version")
 	if version != "v4" && version != "v6" {

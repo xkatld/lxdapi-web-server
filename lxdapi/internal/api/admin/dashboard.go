@@ -10,14 +10,6 @@ import (
 )
 
 // GetDashboard 获取仪表盘数据
-// @Summary 获取仪表盘数据
-// @Description 获取系统概览数据，包括容器、用户、系统信息等
-// @Tags Admin API - 仪表盘
-// @Accept json
-// @Produce json
-// @Success 200 {object} response.Response "获取成功"
-// @Security SessionAuth
-// @Router /api/admin/dashboard [get]
 func GetDashboard(c *gin.Context) {
 	var containerCount int64
 	db.DB.Model(&models.Container{}).Count(&containerCount)
@@ -61,15 +53,6 @@ func GetDashboard(c *gin.Context) {
 }
 
 // GetHostStats 获取主机状态
-// @Summary 获取主机状态
-// @Description 获取主机CPU、内存、磁盘等实时状态
-// @Tags Admin API - 仪表盘
-// @Accept json
-// @Produce json
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security SessionAuth
-// @Router /api/admin/host/stats [get]
 func GetHostStats(c *gin.Context) {
 	stats, err := system.GetHostStats()
 	if err != nil {

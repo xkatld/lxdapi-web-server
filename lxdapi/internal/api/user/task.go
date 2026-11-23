@@ -7,18 +7,6 @@ import (
 	"lxdapi/pkg/response"
 )
 
-// GetTask 获取任务状态
-// @Summary 获取任务状态
-// @Description 获取指定任务的状态（只能查询自己的任务）
-// @Tags User API - 任务管理
-// @Accept json
-// @Produce json
-// @Param id path string true "任务ID"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 403 {object} response.Response "无权访问"
-// @Failure 404 {object} response.Response "任务不存在"
-// @Security UserSession
-// @Router /api/user/tasks/:id [get]
 func GetTask(c *gin.Context) {
 	taskID := c.Param("id")
 	if taskID == "" {

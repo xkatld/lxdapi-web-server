@@ -11,15 +11,6 @@ import (
 )
 
 // GetTemplateList 获取模板列表
-// @Summary 获取模板列表
-// @Description 获取所有容器模板
-// @Tags Admin API - 模板管理
-// @Accept json
-// @Produce json
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security SessionAuth
-// @Router /api/admin/templates [get]
 func GetTemplateList(c *gin.Context) {
 	svc := service.NewTemplateService()
 	
@@ -37,15 +28,6 @@ func GetTemplateList(c *gin.Context) {
 }
 
 // SyncTemplates 同步模板
-// @Summary 同步模板
-// @Description 从LXD同步模板到数据库
-// @Tags Admin API - 模板管理
-// @Accept json
-// @Produce json
-// @Success 200 {object} response.Response "同步成功"
-// @Failure 500 {object} response.Response "同步失败"
-// @Security SessionAuth
-// @Router /api/admin/templates/sync [post]
 func SyncTemplates(c *gin.Context) {
 	svc := service.NewTemplateService()
 	ctx := c.Request.Context()
@@ -69,18 +51,6 @@ func SyncTemplates(c *gin.Context) {
 }
 
 // DeleteTemplate 删除模板（统一接口）
-// @Summary 删除模板
-// @Description 删除指定模板，支持单个和批量删除
-// @Tags Admin API - 模板管理
-// @Accept json
-// @Produce json
-// @Param fingerprint path string false "模板指纹（单个删除）"
-// @Param fingerprints query string false "模板指纹列表，逗号分隔（批量删除）"
-// @Success 200 {object} response.Response "删除成功"
-// @Failure 400 {object} response.Response "缺少参数"
-// @Failure 500 {object} response.Response "删除失败"
-// @Security SessionAuth
-// @Router /api/admin/templates/:fingerprint [delete]
 func DeleteTemplate(c *gin.Context) {
 	fingerprint := c.Param("fingerprint")
 	
@@ -119,17 +89,6 @@ func DeleteTemplate(c *gin.Context) {
 }
 
 // BatchDeleteTemplates 批量删除模板
-// @Summary 批量删除模板
-// @Description 批量删除多个模板
-// @Tags Admin API - 模板管理
-// @Accept json
-// @Produce json
-// @Param request body models.BatchDeleteTemplateRequest true "模板指纹列表"
-// @Success 200 {object} response.Response "删除成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 500 {object} response.Response "删除失败"
-// @Security SessionAuth
-// @Router /api/admin/templates/batch-delete [post]
 func BatchDeleteTemplates(c *gin.Context) {
 	var req models.BatchDeleteTemplateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -163,19 +122,6 @@ func BatchDeleteTemplates(c *gin.Context) {
 }
 
 // SetTemplatePermission 设置模板用户权限
-// @Summary 设置模板用户权限
-// @Description 设置哪些用户可以使用该模板
-// @Tags Admin API - 模板管理
-// @Accept json
-// @Produce json
-// @Param fingerprint path string true "模板指纹"
-// @Param request body object{allowed_users=[]string} true "允许使用的用户名列表"
-// @Success 200 {object} response.Response "设置成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 404 {object} response.Response "模板不存在"
-// @Failure 500 {object} response.Response "设置失败"
-// @Security SessionAuth
-// @Router /api/admin/templates/:fingerprint/permission [put]
 func SetTemplatePermission(c *gin.Context) {
 	fingerprint := c.Param("fingerprint")
 	if fingerprint == "" {
@@ -217,16 +163,6 @@ func SetTemplatePermission(c *gin.Context) {
 }
 
 // GetTemplatePermission 获取模板用户权限
-// @Summary 获取模板用户权限
-// @Description 获取模板的用户权限设置
-// @Tags Admin API - 模板管理
-// @Accept json
-// @Produce json
-// @Param fingerprint path string true "模板指纹"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 404 {object} response.Response "模板不存在"
-// @Security SessionAuth
-// @Router /api/admin/templates/:fingerprint/permission [get]
 func GetTemplatePermission(c *gin.Context) {
 	fingerprint := c.Param("fingerprint")
 	if fingerprint == "" {

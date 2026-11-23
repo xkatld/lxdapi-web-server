@@ -8,16 +8,6 @@ import (
 )
 
 // GetTaskList 获取任务列表
-// @Summary 获取任务列表
-// @Description 获取任务列表，可按容器名过滤
-// @Tags Admin API - 任务管理
-// @Accept json
-// @Produce json
-// @Param container_name query string false "容器名称"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security SessionAuth
-// @Router /api/admin/tasks [get]
 func GetTaskList(c *gin.Context) {
 	var tasks []models.Task
 	
@@ -40,17 +30,6 @@ func GetTaskList(c *gin.Context) {
 }
 
 // GetTask 获取任务详情
-// @Summary 获取任务详情
-// @Description 获取指定任务的详细信息
-// @Tags Admin API - 任务管理
-// @Accept json
-// @Produce json
-// @Param id path string true "任务ID"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 400 {object} response.Response "缺少参数"
-// @Failure 404 {object} response.Response "任务不存在"
-// @Security SessionAuth
-// @Router /api/admin/tasks/:id [get]
 func GetTask(c *gin.Context) {
 	taskID := c.Param("id")
 	if taskID == "" {
@@ -68,18 +47,6 @@ func GetTask(c *gin.Context) {
 }
 
 // DeleteTask 删除任务
-// @Summary 删除任务
-// @Description 删除指定任务，支持单个删除和批量删除
-// @Tags Admin API - 任务管理
-// @Accept json
-// @Produce json
-// @Param id path string false "任务ID（单个删除）"
-// @Param ids query string false "任务ID列表，逗号分隔（批量删除）"
-// @Success 200 {object} response.Response "删除成功"
-// @Failure 400 {object} response.Response "缺少参数"
-// @Failure 500 {object} response.Response "删除失败"
-// @Security SessionAuth
-// @Router /api/admin/tasks/:id [delete]
 func DeleteTask(c *gin.Context) {
 	taskID := c.Param("id")
 	
@@ -106,17 +73,6 @@ func DeleteTask(c *gin.Context) {
 }
 
 // BatchDeleteTasks 批量删除任务
-// @Summary 批量删除任务
-// @Description 批量删除多个任务
-// @Tags Admin API - 任务管理
-// @Accept json
-// @Produce json
-// @Param request body object true "任务ID列表"
-// @Success 200 {object} response.Response "删除成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 500 {object} response.Response "删除失败"
-// @Security SessionAuth
-// @Router /api/admin/tasks/batch-delete [post]
 func BatchDeleteTasks(c *gin.Context) {
 	var req struct {
 		TaskIDs []string `json:"task_ids"`

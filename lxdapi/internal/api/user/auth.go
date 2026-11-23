@@ -119,15 +119,6 @@ func reset_user_attempts(client_ip string) {
 	delete(userLoginAttempts.attempts, client_ip)
 }
 
-// GetCaptcha 获取验证码
-// @Summary 获取验证码
-// @Description 获取用户登录验证码
-// @Tags User API - 认证
-// @Accept json
-// @Produce json
-// @Success 200 {object} object{code=int,captcha_id=string,image=string} "生成成功"
-// @Failure 500 {object} response.Response "生成失败"
-// @Router /api/user/captcha [get]
 func GetCaptcha(c *gin.Context) {
 	driver := base64Captcha.NewDriverDigit(80, 240, 4, 0.7, 80)
 	captcha := base64Captcha.NewCaptcha(driver, captchaStore)
@@ -148,18 +139,6 @@ func GetCaptcha(c *gin.Context) {
 	})
 }
 
-// Login 用户登录
-// @Summary 用户登录
-// @Description 使用用户名、密码和验证码登录
-// @Tags User API - 认证
-// @Accept json
-// @Produce json
-// @Param request body object{username=string,password=string,captcha=string} true "登录信息"
-// @Success 200 {object} response.Response "登录成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 401 {object} response.Response "认证失败"
-// @Failure 500 {object} response.Response "登录失败"
-// @Router /api/user/login [post]
 func Login(c *gin.Context) {
 	var req struct {
 		Username string `json:"username" binding:"required"`
@@ -237,15 +216,6 @@ func Login(c *gin.Context) {
 	})
 }
 
-// Logout 用户登出
-// @Summary 用户登出
-// @Description 退出用户中心登录
-// @Tags User API - 认证
-// @Accept json
-// @Produce json
-// @Success 200 {object} response.Response "登出成功"
-// @Security UserSession
-// @Router /api/user/logout [post]
 func Logout(c *gin.Context) {
 	session := sessions.Default(c)
 	session.Clear()
@@ -253,15 +223,6 @@ func Logout(c *gin.Context) {
 	response.Success(c, nil)
 }
 
-// GetUserInfo 获取当前用户信息和配额
-// @Summary 获取当前用户信息
-// @Description 获取当前登录用户的信息和配额统计
-// @Tags User API - 认证
-// @Accept json
-// @Produce json
-// @Success 200 {object} response.Response "获取成功"
-// @Security UserSession
-// @Router /api/user/info [get]
 func GetUserInfo(c *gin.Context) {
 	username, _ := c.Get("username")
 	

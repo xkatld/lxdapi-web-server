@@ -36,17 +36,6 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-// CreateToken 创建WebSocket令牌
-// @Summary 创建WebSocket令牌
-// @Description 为容器控制台创建WebSocket访问令牌
-// @Tags Console API
-// @Accept json
-// @Produce json
-// @Param request body object{hostname=string} true "容器主机名"
-// @Success 200 {object} response.Response "创建成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 500 {object} response.Response "生成失败"
-// @Router /api/console/token [post]
 func CreateToken(c *gin.Context) {
 	var req struct {
 		Hostname string `json:"hostname" binding:"required"`
@@ -111,14 +100,6 @@ func CreateToken(c *gin.Context) {
 	})
 }
 
-// HandleWebSocket WebSocket控制台
-// @Summary WebSocket控制台连接
-// @Description 建立WebSocket连接用于容器控制台
-// @Tags Console API
-// @Accept json
-// @Produce json
-// @Param token query string true "访问令牌"
-// @Router /api/console/ws [get]
 func HandleWebSocket(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" {

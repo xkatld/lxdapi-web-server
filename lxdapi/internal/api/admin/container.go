@@ -13,16 +13,6 @@ import (
 )
 
 // ListContainers 获取容器列表
-// @Summary 获取容器列表
-// @Description 获取容器列表，可按用户筛选
-// @Tags Admin API - 容器管理
-// @Accept json
-// @Produce json
-// @Param user_id query string false "用户ID"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security SessionAuth
-// @Router /api/admin/containers [get]
 func ListContainers(c *gin.Context) {
 	userID := c.Query("user_id")
 	
@@ -40,17 +30,6 @@ func ListContainers(c *gin.Context) {
 }
 
 // GetContainer 获取容器详情
-// @Summary 获取容器详情
-// @Description 获取指定容器的详细信息
-// @Tags Admin API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 400 {object} response.Response "缺少参数"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Security SessionAuth
-// @Router /api/admin/containers/:name [get]
 func GetContainer(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -77,18 +56,6 @@ func GetContainer(c *gin.Context) {
 }
 
 // DeleteContainer 删除容器
-// @Summary 删除容器
-// @Description 删除指定容器
-// @Tags Admin API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Success 200 {object} response.Response "删除任务已创建"
-// @Failure 400 {object} response.Response "缺少参数"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Failure 500 {object} response.Response "删除失败"
-// @Security SessionAuth
-// @Router /api/admin/containers/:name [delete]
 func DeleteContainer(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -125,20 +92,6 @@ func DeleteContainer(c *gin.Context) {
 }
 
 // ContainerAction 容器操作统一接口
-// @Summary 容器操作
-// @Description 对容器执行操作: start/stop/restart/pause/resume/reinstall/reset-password/reset-traffic
-// @Tags Admin API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Param action query string true "操作类型"
-// @Param request body object false "操作参数"
-// @Success 200 {object} response.Response "操作成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Failure 500 {object} response.Response "操作失败"
-// @Security SessionAuth
-// @Router /api/admin/containers/:name/action [post]
 func ContainerAction(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -291,17 +244,6 @@ func ContainerAction(c *gin.Context) {
 }
 
 // GetContainerCredential 获取容器凭证
-// @Summary 获取容器凭证
-// @Description 获取或创建容器访问凭证
-// @Tags Admin API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 400 {object} response.Response "缺少参数"
-// @Failure 500 {object} response.Response "创建失败"
-// @Security SessionAuth
-// @Router /api/admin/containers/:name/credential [get]
 func GetContainerCredential(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -326,17 +268,6 @@ func GetContainerCredential(c *gin.Context) {
 }
 
 // RegenerateContainerCredential 重新生成容器凭证
-// @Summary 重新生成容器凭证
-// @Description 重新生成容器访问Hash
-// @Tags Admin API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Success 200 {object} response.Response "生成成功"
-// @Failure 400 {object} response.Response "缺少参数"
-// @Failure 500 {object} response.Response "生成失败"
-// @Security SessionAuth
-// @Router /api/admin/containers/:name/credential [post]
 func RegenerateContainerCredential(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -359,17 +290,6 @@ func RegenerateContainerCredential(c *gin.Context) {
 }
 
 // GetContainerConfig 获取容器配置
-// @Summary 获取容器配置
-// @Description 获取容器的资源配置信息（仅管理员可用）
-// @Tags Admin API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 400 {object} response.Response "缺少参数"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Security SessionAuth
-// @Router /api/admin/containers/:name/config [get]
 func GetContainerConfig(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -389,19 +309,6 @@ func GetContainerConfig(c *gin.Context) {
 }
 
 // UpdateContainerConfig 更新容器配置
-// @Summary 更新容器配置
-// @Description 热更新容器配置，支持CPU、内存、磁盘、带宽等升降级，磁盘只能扩容
-// @Tags Admin API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Param request body models.UpdateContainerConfigRequest true "配置更新参数"
-// @Success 200 {object} response.Response "更新成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Failure 500 {object} response.Response "更新失败"
-// @Security SessionAuth
-// @Router /api/admin/containers/:name/config [put]
 func UpdateContainerConfig(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -447,18 +354,6 @@ func UpdateContainerConfig(c *gin.Context) {
 }
 
 // GetContainerIP 获取容器IP
-// @Summary 获取容器IP
-// @Description 获取容器的IP地址
-// @Tags Admin API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Param version query string false "IP版本: v4/v6/all，默认all"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 400 {object} response.Response "缺少参数"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security SessionAuth
-// @Router /api/admin/containers/:name/ip [get]
 func GetContainerIP(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -487,20 +382,6 @@ func GetContainerIP(c *gin.Context) {
 }
 
 // AllocateContainerIP 分配容器IP
-// @Summary 分配容器IP
-// @Description 为容器分配IP地址
-// @Tags Admin API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Param version query string true "IP版本: v4 或 v6"
-// @Param request body object{count=int} false "分配数量"
-// @Success 200 {object} response.Response "分配成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Failure 500 {object} response.Response "分配失败"
-// @Security SessionAuth
-// @Router /api/admin/containers/:name/ip/allocate [post]
 func AllocateContainerIP(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {

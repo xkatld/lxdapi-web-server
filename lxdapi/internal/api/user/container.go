@@ -36,18 +36,6 @@ type UserCreateContainerRequest struct {
 	ReverseProxyLimit int    `json:"reverse_proxy_limit"`
 }
 
-// CreateContainer 创建容器
-// @Summary 创建容器
-// @Description 用户创建新容器，使用管理员预设的配置参数
-// @Tags User API - 容器管理
-// @Accept json
-// @Produce json
-// @Param request body UserCreateContainerRequest true "容器创建参数"
-// @Success 200 {object} response.Response "创建成功，返回任务ID"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 500 {object} response.Response "创建失败"
-// @Security UserSession
-// @Router /api/user/containers [post]
 func CreateContainer(c *gin.Context) {
 	username, _ := c.Get("username")
 	
@@ -187,19 +175,6 @@ func CreateContainer(c *gin.Context) {
 	})
 }
 
-// DeleteContainer 删除容器
-// @Summary 删除容器
-// @Description 删除用户自己的容器
-// @Tags User API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Success 200 {object} response.Response "删除任务已创建"
-// @Failure 403 {object} response.Response "无权操作"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Failure 500 {object} response.Response "删除失败"
-// @Security UserSession
-// @Router /api/user/containers/:name [delete]
 func DeleteContainer(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -246,15 +221,6 @@ func DeleteContainer(c *gin.Context) {
 	})
 }
 
-// ListContainers 获取容器列表
-// @Summary 获取容器列表
-// @Description 获取当前用户的所有容器
-// @Tags User API - 容器管理
-// @Accept json
-// @Produce json
-// @Success 200 {object} response.Response "获取成功"
-// @Security UserSession
-// @Router /api/user/containers [get]
 func ListContainers(c *gin.Context) {
 	username, _ := c.Get("username")
 	
@@ -274,18 +240,6 @@ func ListContainers(c *gin.Context) {
 	})
 }
 
-// GetContainer 获取容器详情（合并detail+info+status）
-// @Summary 获取容器详情
-// @Description 获取指定容器的详细信息，包含状态和系统信息
-// @Tags User API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 403 {object} response.Response "无权访问"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Security UserSession
-// @Router /api/user/containers/:name [get]
 func GetContainer(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -318,22 +272,6 @@ func GetContainer(c *gin.Context) {
 	response.Success(c, info)
 }
 
-// ContainerAction 容器操作统一接口
-// @Summary 容器操作
-// @Description 对容器执行操作: start/stop/restart/reinstall/reset-password
-// @Tags User API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Param action query string true "操作类型: start/stop/restart/reinstall/reset-password"
-// @Param request body object false "操作参数"
-// @Success 200 {object} response.Response "操作成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 403 {object} response.Response "无权操作"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Failure 500 {object} response.Response "操作失败"
-// @Security UserSession
-// @Router /api/user/containers/:name/action [post]
 func ContainerAction(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -494,18 +432,6 @@ func ContainerAction(c *gin.Context) {
 	}
 }
 
-// GetContainerConfig 获取容器配置
-// @Summary 获取容器配置
-// @Description 获取容器的资源配置信息
-// @Tags User API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 403 {object} response.Response "无权访问"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Security UserSession
-// @Router /api/user/containers/:name/config [get]
 func GetContainerConfig(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -535,21 +461,6 @@ func GetContainerConfig(c *gin.Context) {
 	response.Success(c, config)
 }
 
-// UpdateContainerConfig 更新容器配置
-// @Summary 更新容器配置
-// @Description 热更新容器配置，支持CPU、内存、磁盘、带宽等升降级，磁盘只能扩容
-// @Tags User API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Param request body models.UpdateContainerConfigRequest true "配置更新参数"
-// @Success 200 {object} response.Response "更新成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 403 {object} response.Response "无权操作"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Failure 500 {object} response.Response "更新失败"
-// @Security UserSession
-// @Router /api/user/containers/:name/config [put]
 type UserUpdateContainerConfigRequest struct {
 	CPU               *int    `json:"cpu"`
 	Memory            *int    `json:"memory"`
@@ -750,19 +661,6 @@ func UpdateContainerConfig(c *gin.Context) {
 	})
 }
 
-// RefreshCache 刷新缓存（统一接口）
-// @Summary 刷新缓存
-// @Description 刷新容器缓存，无name参数刷新所有，有name参数刷新指定容器
-// @Tags User API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name query string false "容器名称，不传则刷新所有"
-// @Success 200 {object} response.Response "刷新成功"
-// @Failure 403 {object} response.Response "无权操作"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Failure 500 {object} response.Response "刷新失败"
-// @Security UserSession
-// @Router /api/user/cache/refresh [post]
 func RefreshCache(c *gin.Context) {
 	username, _ := c.Get("username")
 	ctx := c.Request.Context()
@@ -823,19 +721,6 @@ func RefreshCache(c *gin.Context) {
 	})
 }
 
-// GetContainerCredential 获取容器凭证
-// @Summary 获取容器凭证
-// @Description 获取容器访问凭证，不存在则自动创建
-// @Tags User API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 403 {object} response.Response "无权访问"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security UserSession
-// @Router /api/user/containers/:name/credential [get]
 func GetContainerCredential(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -872,19 +757,6 @@ func GetContainerCredential(c *gin.Context) {
 	})
 }
 
-// RegenerateContainerCredential 重新生成容器凭证
-// @Summary 重新生成容器凭证
-// @Description 重新生成容器访问Hash
-// @Tags User API - 容器管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Success 200 {object} response.Response "生成成功"
-// @Failure 403 {object} response.Response "无权操作"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Failure 500 {object} response.Response "生成失败"
-// @Security UserSession
-// @Router /api/user/containers/:name/credential/regenerate [post]
 func RegenerateContainerCredential(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -924,20 +796,6 @@ func RegenerateContainerCredential(c *gin.Context) {
 	})
 }
 
-// GetContainerIP 获取容器IP（统一接口）
-// @Summary 获取容器IP
-// @Description 获取容器的IP地址，通过version参数区分IPv4/IPv6
-// @Tags User API - IP管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Param version query string false "IP版本: v4/v6/all，默认all"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 403 {object} response.Response "无权访问"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security UserSession
-// @Router /api/user/containers/:name/ip [get]
 func GetContainerIP(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -990,22 +848,6 @@ func GetContainerIP(c *gin.Context) {
 	response.Success(c, result)
 }
 
-// AllocateContainerIP 分配容器IP（统一接口）
-// @Summary 分配容器IP
-// @Description 为容器分配IP地址，通过version参数区分IPv4/IPv6
-// @Tags User API - IP管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Param version query string true "IP版本: v4 或 v6"
-// @Param request body object{count=int} false "分配数量"
-// @Success 200 {object} response.Response "分配成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 403 {object} response.Response "无权操作"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Failure 500 {object} response.Response "分配失败"
-// @Security UserSession
-// @Router /api/user/containers/:name/ip/allocate [post]
 func AllocateContainerIP(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -1078,22 +920,6 @@ func AllocateContainerIP(c *gin.Context) {
 	}
 }
 
-// ReleaseContainerIP 释放容器IP（统一接口）
-// @Summary 释放容器IP
-// @Description 释放容器的IP地址，通过version参数区分IPv4/IPv6
-// @Tags User API - IP管理
-// @Accept json
-// @Produce json
-// @Param name path string true "容器名称"
-// @Param version query string true "IP版本: v4 或 v6"
-// @Param request body object{ip=string} true "要释放的IP地址"
-// @Success 200 {object} response.Response "释放成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 403 {object} response.Response "无权操作"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Failure 500 {object} response.Response "释放失败"
-// @Security UserSession
-// @Router /api/user/containers/:name/ip/release [post]
 func ReleaseContainerIP(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {

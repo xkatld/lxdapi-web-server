@@ -19,24 +19,10 @@ go mod tidy
 go mod download
 
 echo ""
-echo "生成 Swagger 文档..."
-if command -v swag &> /dev/null; then
-    swag init -g cmd/lxdapi/main.go --output docs --parseDependency --parseInternal
-    echo "✓ Swagger 文档生成完成"
-elif [ -f ~/go/bin/swag ]; then
-    ~/go/bin/swag init -g cmd/lxdapi/main.go --output docs --parseDependency --parseInternal
-    echo "✓ Swagger 文档生成完成"
-else
-    echo "警告: 未找到 swag 命令，跳过 Swagger 文档生成"
-    echo "可通过以下命令安装: go install github.com/swaggo/swag/cmd/swag@latest"
-fi
-
-echo ""
 echo "准备嵌入式资源..."
-rm -rf cmd/lxdapi/templates cmd/lxdapi/docs cmd/lxdapi/static
+rm -rf cmd/lxdapi/templates cmd/lxdapi/static
 cp -r ../lxdweb/templates cmd/lxdapi/
 cp -r ../lxdweb/static cmd/lxdapi/
-cp -r docs cmd/lxdapi/
 echo "✓ 资源文件已准备"
 
 echo ""
@@ -59,7 +45,7 @@ ls -lh lxdapi-* | awk '{print $9 " (" $5 ")"}'
 
 echo ""
 echo "清理临时文件..."
-rm -rf cmd/lxdapi/templates cmd/lxdapi/docs
+rm -rf cmd/lxdapi/templates
 echo "✓ 临时文件已清理"
 
 echo ""

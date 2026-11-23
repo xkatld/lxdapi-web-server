@@ -17,16 +17,6 @@ func InitContainerService(svc *service.ContainerService) {
 	containerService = svc
 }
 
-// GetInfo 获取容器信息（合并info+status+traffic）
-// @Summary 获取容器信息
-// @Description 获取容器详细信息，包含状态和流量
-// @Tags Container API - 信息
-// @Accept json
-// @Produce json
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Security ContainerAuth
-// @Router /api/container/info [get]
 func GetInfo(c *gin.Context) {
 	containerName, _ := c.Get("container_name")
 	name := containerName.(string)
@@ -58,16 +48,6 @@ func GetInfo(c *gin.Context) {
 	response.Success(c, info)
 }
 
-// GetTemplateList 获取模板列表
-// @Summary 获取模板列表
-// @Description 获取可用容器模板列表
-// @Tags Container API - 信息
-// @Accept json
-// @Produce json
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security ContainerAuth
-// @Router /api/container/templates [get]
 func GetTemplateList(c *gin.Context) {
 	svc := service.NewTemplateService()
 
@@ -84,20 +64,6 @@ func GetTemplateList(c *gin.Context) {
 	})
 }
 
-// Action 容器操作统一接口
-// @Summary 容器操作
-// @Description 对容器执行操作: start/stop/restart/reinstall/reset-password
-// @Tags Container API - 操作
-// @Accept json
-// @Produce json
-// @Param action query string true "操作类型: start/stop/restart/reinstall/reset-password"
-// @Param request body object false "操作参数（reinstall需要image/password，reset-password需要password）"
-// @Success 200 {object} response.Response "操作成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 404 {object} response.Response "容器不存在"
-// @Failure 500 {object} response.Response "操作失败"
-// @Security ContainerAuth
-// @Router /api/container/action [post]
 func Action(c *gin.Context) {
 	containerName, _ := c.Get("container_name")
 	name := containerName.(string)
@@ -213,17 +179,6 @@ func Action(c *gin.Context) {
 	}
 }
 
-// GetIP 获取容器IP地址（统一接口）
-// @Summary 获取容器IP地址
-// @Description 获取容器的IP地址，通过version参数区分IPv4/IPv6
-// @Tags Container API - IP管理
-// @Accept json
-// @Produce json
-// @Param version query string false "IP版本: v4/v6/all，默认all"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security ContainerAuth
-// @Router /api/container/ip [get]
 func GetIP(c *gin.Context) {
 	containerName, _ := c.Get("container_name")
 	name := containerName.(string)
@@ -260,19 +215,6 @@ func GetIP(c *gin.Context) {
 	response.Success(c, result)
 }
 
-// AllocateIP 分配IP地址（统一接口）
-// @Summary 分配IP地址
-// @Description 为容器分配IP地址，通过version参数区分IPv4/IPv6
-// @Tags Container API - IP管理
-// @Accept json
-// @Produce json
-// @Param version query string true "IP版本: v4 或 v6"
-// @Param request body object{count=int} false "分配数量"
-// @Success 200 {object} response.Response "分配成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 500 {object} response.Response "分配失败"
-// @Security ContainerAuth
-// @Router /api/container/ip/allocate [post]
 func AllocateIP(c *gin.Context) {
 	containerName, _ := c.Get("container_name")
 	name := containerName.(string)
@@ -335,19 +277,6 @@ func AllocateIP(c *gin.Context) {
 	}
 }
 
-// ReleaseIP 释放IP地址（统一接口）
-// @Summary 释放IP地址
-// @Description 释放容器的IP地址，通过version参数区分IPv4/IPv6
-// @Tags Container API - IP管理
-// @Accept json
-// @Produce json
-// @Param version query string true "IP版本: v4 或 v6"
-// @Param request body object{ip=string} true "要释放的IP地址"
-// @Success 200 {object} response.Response "释放成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 500 {object} response.Response "释放失败"
-// @Security ContainerAuth
-// @Router /api/container/ip/release [post]
 func ReleaseIP(c *gin.Context) {
 	containerName, _ := c.Get("container_name")
 	name := containerName.(string)

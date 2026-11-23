@@ -17,15 +17,6 @@ func InitBrandService() {
 }
 
 // GetBrandSettings 获取品牌设置
-// @Summary 获取品牌设置
-// @Description 获取系统品牌自定义设置
-// @Tags Admin API - 品牌设置
-// @Accept json
-// @Produce json
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security SessionAuth
-// @Router /api/admin/brand-settings [get]
 func GetBrandSettings(c *gin.Context) {
 	settings, err := brandService.GetSettings()
 	if err != nil {
@@ -38,18 +29,6 @@ func GetBrandSettings(c *gin.Context) {
 }
 
 // UpdateBrandSettings 更新品牌设置（统一接口）
-// @Summary 更新品牌设置
-// @Description 更新系统品牌自定义设置，reset=true时重置为默认
-// @Tags Admin API - 品牌设置
-// @Accept json
-// @Produce json
-// @Param reset query string false "是否重置为默认值"
-// @Param request body models.BrandSettings false "品牌设置"
-// @Success 200 {object} response.Response "更新成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 500 {object} response.Response "更新失败"
-// @Security SessionAuth
-// @Router /api/admin/brand-settings [post]
 func UpdateBrandSettings(c *gin.Context) {
 	reset := c.Query("reset")
 	if reset == "true" {

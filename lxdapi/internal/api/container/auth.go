@@ -118,15 +118,6 @@ func reset_container_attempts(client_ip string) {
 	delete(containerVerifyAttempts.attempts, client_ip)
 }
 
-// GetCaptcha 获取验证码
-// @Summary 获取验证码
-// @Description 获取容器登录验证码
-// @Tags Container API - 认证
-// @Accept json
-// @Produce json
-// @Success 200 {object} object{code=int,captcha_id=string,image=string} "生成成功"
-// @Failure 500 {object} response.Response "生成失败"
-// @Router /api/container/captcha [get]
 func GetCaptcha(c *gin.Context) {
 	driver := base64Captcha.NewDriverDigit(80, 240, 4, 0.7, 80)
 	captcha := base64Captcha.NewCaptcha(driver, captchaStore)
@@ -154,17 +145,6 @@ func GetCaptcha(c *gin.Context) {
 	})
 }
 
-// VerifyAccess 验证访问
-// @Summary 验证访问
-// @Description 使用Hash和验证码验证容器访问
-// @Tags Container API - 认证
-// @Accept json
-// @Produce json
-// @Param request body object{hash=string,captcha=string} true "验证信息"
-// @Success 200 {object} response.Response "验证成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 401 {object} response.Response "验证失败"
-// @Router /api/container/verify [post]
 func VerifyAccess(c *gin.Context) {
 	var req struct {
 		Hash    string `json:"hash" binding:"required"`

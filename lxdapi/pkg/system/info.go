@@ -11,7 +11,6 @@ type SystemInfo struct {
 	Name         string `json:"name"`
 	Version      string `json:"version"`
 	Description  string `json:"description"`
-	Docs         string `json:"docs"`
 	OS           string `json:"os"`
 	Arch         string `json:"arch"`
 	LXDVersion   string `json:"lxd_version,omitempty"`
@@ -24,7 +23,6 @@ func GetSystemInfo() *SystemInfo {
 		Name:        "lxdapi",
 		Version:     "v2.1.3",
 		Description: "LXD容器管理后端API服务",
-		Docs:        "/swagger/index.html",
 		OS:          runtime.GOOS,
 		Arch:        runtime.GOARCH,
 	}

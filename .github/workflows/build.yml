@@ -15,10 +15,6 @@ jobs:
         with:
           go-version: '1.23'
 
-      - name: Install Swag
-        run: |
-          go install github.com/swaggo/swag/cmd/swag@latest
-
       - name: Run Build Script
         run: |
           cd lxdapi

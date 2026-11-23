@@ -15,14 +15,6 @@ import (
 )
 
 // GetContainersCache 获取容器缓存
-// @Summary 获取容器缓存
-// @Description 从缓存获取所有容器信息
-// @Tags Admin API - 缓存管理
-// @Accept json
-// @Produce json
-// @Success 200 {object} response.Response "获取成功"
-// @Security SessionAuth
-// @Router /api/admin/cache/containers [get]
 func GetContainersCache(c *gin.Context) {
 	containers := cache.GetAllContainersCache()
 	
@@ -34,16 +26,6 @@ func GetContainersCache(c *gin.Context) {
 }
 
 // RefreshCache 刷新缓存（统一接口）
-// @Summary 刷新缓存
-// @Description 刷新容器缓存，无name参数刷新所有，有name参数刷新指定容器
-// @Tags Admin API - 缓存管理
-// @Accept json
-// @Produce json
-// @Param name query string false "容器名称，不传则刷新所有"
-// @Success 200 {object} response.Response "刷新成功"
-// @Failure 500 {object} response.Response "刷新失败"
-// @Security SessionAuth
-// @Router /api/admin/cache/refresh [post]
 func RefreshCache(c *gin.Context) {
 	ctx := c.Request.Context()
 	name := c.Query("name")

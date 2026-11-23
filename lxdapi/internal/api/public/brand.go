@@ -7,14 +7,6 @@ import (
 	"lxdapi/pkg/response"
 )
 
-// GetBrandSettings 获取品牌设置
-// @Summary 获取品牌设置
-// @Description 获取公开的品牌设置
-// @Tags Public API
-// @Accept json
-// @Produce json
-// @Success 200 {object} response.Response "获取成功"
-// @Router /api/public/brand [get]
 func GetBrandSettings(c *gin.Context) {
 	svc := service.NewBrandService()
 	settings, err := svc.GetSettings()

@@ -14,17 +14,6 @@ import (
 )
 
 // ListPortMappings 获取端口映射列表（统一接口）
-// @Summary 获取端口映射列表
-// @Description 获取端口映射列表，支持按版本和容器过滤
-// @Tags Admin API - 端口映射管理
-// @Accept json
-// @Produce json
-// @Param version query string false "IP版本: v4/v6/all，默认all"
-// @Param container query string false "容器名称"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security SessionAuth
-// @Router /api/admin/port-mapping [get]
 func ListPortMappings(c *gin.Context) {
 	version := c.DefaultQuery("version", "all")
 	containerName := c.Query("container")
@@ -63,18 +52,6 @@ func ListPortMappings(c *gin.Context) {
 }
 
 // AllocatePortMapping 分配端口映射（统一接口）
-// @Summary 分配端口映射
-// @Description 为容器分配端口映射
-// @Tags Admin API - 端口映射管理
-// @Accept json
-// @Produce json
-// @Param version query string true "IP版本: v4 或 v6"
-// @Param request body object true "映射参数"
-// @Success 200 {object} response.Response "分配成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 500 {object} response.Response "分配失败"
-// @Security SessionAuth
-// @Router /api/admin/port-mapping/allocate [post]
 func AllocatePortMapping(c *gin.Context) {
 	version := c.Query("version")
 	if version != "v4" && version != "v6" {
@@ -292,18 +269,6 @@ func AllocatePortMapping(c *gin.Context) {
 }
 
 // ReleasePortMapping 释放端口映射（统一接口）
-// @Summary 释放端口映射
-// @Description 释放端口映射，支持单个和批量释放
-// @Tags Admin API - 端口映射管理
-// @Accept json
-// @Produce json
-// @Param version query string true "IP版本: v4 或 v6"
-// @Param request body object true "释放参数"
-// @Success 200 {object} response.Response "释放成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 500 {object} response.Response "释放失败"
-// @Security SessionAuth
-// @Router /api/admin/port-mapping/release [post]
 func ReleasePortMapping(c *gin.Context) {
 	version := c.Query("version")
 	if version != "v4" && version != "v6" {
@@ -433,16 +398,6 @@ func ReleasePortMapping(c *gin.Context) {
 }
 
 // GetNATConfig 获取NAT配置（统一接口）
-// @Summary 获取NAT配置
-// @Description 获取NAT配置
-// @Tags Admin API - NAT配置
-// @Accept json
-// @Produce json
-// @Param version query string true "IP版本: v4 或 v6"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Security SessionAuth
-// @Router /api/admin/nat-config [get]
 func GetNATConfig(c *gin.Context) {
 	version := c.Query("version")
 	if version != "v4" && version != "v6" {
@@ -468,18 +423,6 @@ func GetNATConfig(c *gin.Context) {
 }
 
 // SaveNATConfig 保存NAT配置（统一接口）
-// @Summary 保存NAT配置
-// @Description 保存NAT配置
-// @Tags Admin API - NAT配置
-// @Accept json
-// @Produce json
-// @Param version query string true "IP版本: v4 或 v6"
-// @Param request body object true "NAT配置"
-// @Success 200 {object} response.Response "保存成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 500 {object} response.Response "保存失败"
-// @Security SessionAuth
-// @Router /api/admin/nat-config [post]
 func SaveNATConfig(c *gin.Context) {
 	version := c.Query("version")
 	if version != "v4" && version != "v6" {

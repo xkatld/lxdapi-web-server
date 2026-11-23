@@ -31,17 +31,6 @@ type CreateUserRequest struct {
 }
 
 // CreateUser 创建用户
-// @Summary 创建用户
-// @Description 创建新用户并生成密码
-// @Tags Admin API - 用户管理
-// @Accept json
-// @Produce json
-// @Param request body CreateUserRequest true "用户信息"
-// @Success 200 {object} response.Response "创建成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 500 {object} response.Response "创建失败"
-// @Security SessionAuth
-// @Router /api/admin/users [post]
 func CreateUser(c *gin.Context) {
 	var req CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -68,17 +57,6 @@ func CreateUser(c *gin.Context) {
 }
 
 // GetUsers 获取用户列表或详情（统一接口）
-// @Summary 获取用户列表或详情
-// @Description 获取用户列表，如果提供id参数则返回用户详情
-// @Tags Admin API - 用户管理
-// @Accept json
-// @Produce json
-// @Param id query string false "用户ID（可选，提供则返回详情）"
-// @Success 200 {object} response.Response "获取成功"
-// @Failure 404 {object} response.Response "用户不存在"
-// @Failure 500 {object} response.Response "获取失败"
-// @Security SessionAuth
-// @Router /api/admin/users [get]
 func GetUsers(c *gin.Context) {
 	userID := c.Query("id")
 
@@ -157,18 +135,6 @@ type UpdateUserRequest struct {
 }
 
 // UpdateUser 更新用户
-// @Summary 更新用户
-// @Description 更新用户配额和状态
-// @Tags Admin API - 用户管理
-// @Accept json
-// @Produce json
-// @Param id path string true "用户ID"
-// @Param request body UpdateUserRequest true "更新参数"
-// @Success 200 {object} response.Response "更新成功"
-// @Failure 400 {object} response.Response "参数错误"
-// @Failure 500 {object} response.Response "更新失败"
-// @Security SessionAuth
-// @Router /api/admin/users/:id [put]
 func UpdateUser(c *gin.Context) {
 	userID := c.Param("id")
 	if userID == "" {
@@ -257,17 +223,6 @@ func UpdateUser(c *gin.Context) {
 }
 
 // DeleteUser 删除用户
-// @Summary 删除用户
-// @Description 删除指定用户
-// @Tags Admin API - 用户管理
-// @Accept json
-// @Produce json
-// @Param id path string true "用户ID"
-// @Success 200 {object} response.Response "删除成功"
-// @Failure 400 {object} response.Response "缺少参数"
-// @Failure 500 {object} response.Response "删除失败"
-// @Security SessionAuth
-// @Router /api/admin/users/:id [delete]
 func DeleteUser(c *gin.Context) {
 	userID := c.Param("id")
 	if userID == "" {
@@ -316,17 +271,6 @@ func BatchDeleteUsers(c *gin.Context) {
 }
 
 // RegenerateAPIKey 重新生成密码
-// @Summary 重新生成密码
-// @Description 重新生成用户的密码
-// @Tags Admin API - 用户管理
-// @Accept json
-// @Produce json
-// @Param id path string true "用户ID"
-// @Success 200 {object} response.Response "生成成功"
-// @Failure 400 {object} response.Response "缺少参数"
-// @Failure 500 {object} response.Response "生成失败"
-// @Security SessionAuth
-// @Router /api/admin/users/:id/regenerate-key [post]
 func RegenerateAPIKey(c *gin.Context) {
 	userID := c.Param("id")
 	if userID == "" {

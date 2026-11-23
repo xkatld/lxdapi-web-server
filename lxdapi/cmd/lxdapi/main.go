@@ -13,9 +13,6 @@ import (
 	"io/fs"
 	"net/http"
 	"lxdapi/handlers"
-	_ "lxdapi/docs"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 	"lxdapi/internal/api/admin"
 	"lxdapi/internal/api/console"
 	"lxdapi/internal/api/container"
@@ -48,7 +45,7 @@ import (
 	"syscall"
 )
 
-//go:embed templates docs static
+//go:embed templates static
 var embeddedFiles embed.FS
 
 func main() {
@@ -353,14 +350,9 @@ func main() {
 			"description": "主流财务系统对接支持，提供完整的Web管理界面与RESTful API",
 			"version":     "v2.1.3",
 			"name":        sysInfo.Name,
-			"docs":        sysInfo.Docs,
 			"arch":        sysInfo.Arch,
 		})
 	})
-
-	if cfg.System.Server.Mode != "release" {
-		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-	}
 
 	staticFS, err := fs.Sub(embeddedFiles, "static")
 	if err == nil {
