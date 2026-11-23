@@ -56,6 +56,9 @@ declare -a IMAGE_LIST=(
     "debian-13"
     "debian-14"
     "debian-sid"
+    "ubuntu-2204"
+    "ubuntu-2404"
+    "ubuntu-2604"
 )
 
 download_and_import() {
@@ -92,7 +95,7 @@ show_image_list() {
     echo "============================================================================================================"
     echo " [1] alpine-321       [2] alpine-322       [3] alpine-323       [4] alpine-324       [5] alpine-edge"
     echo " [6] centos-9-Stream 仅支持arm64           [7] centos-10-Stream [8] debian-12        [9] debian-13"
-    echo "[10] debian-14        [11] debian-sid"
+    echo "[10] debian-14        [11] debian-sid      [12] ubuntu-2204     [13] ubuntu-2404     [14] ubuntu-2604"
     echo "============================================================================================================"
     echo
 }
@@ -102,8 +105,8 @@ menu_import() {
     info "=== 导入镜像 ==="
     show_image_list
     
-    reading "输入编号，多个用空格或逗号分隔，或输入 all 全部导入 [默认 8 9]：" image_choices
-    image_choices=${image_choices:-"8 9"}
+    reading "输入编号，多个用空格或逗号分隔，或输入 all 全部导入 [默认 8 9 12 13]：" image_choices
+    image_choices=${image_choices:-"8 9 12 13"}
     
     local image_type="lxc"
     
