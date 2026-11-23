@@ -46,8 +46,16 @@ func AllocatePortMapping(c *gin.Context) {
 		return
 	}
 
-	if req.Protocol != "tcp" && req.Protocol != "udp" && req.Protocol != "both" {
-		response.Error(c, 400, "协议必须是tcp、udp或both")
+	if err := service.ValidatePortMappingProtocol(req.Protocol); err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
+	if _, err := service.ValidatePortRange(req.PublicPort, 1, "公网端口"); err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
+	if _, err := service.ValidatePortRange(req.ContainerPort, 1, "容器端口"); err != nil {
+		response.Error(c, 400, err.Error())
 		return
 	}
 

@@ -137,9 +137,7 @@ func (p *NginxPlugin) RegisterRoutes(r *gin.Engine) {
 	api := NewAPIHandler(p)
 	
 	adminAPI := r.Group("/api/admin/nginx")
-	adminAPI.Use(func(c *gin.Context) {
-		c.Next()
-	})
+	adminAPI.Use(middleware.AdminAuth())
 	{
 		adminAPI.GET("/config", api.GetConfig)
 		adminAPI.PUT("/config", api.UpdateConfig)

@@ -5,8 +5,10 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/mojocn/base64Captcha"
+	"lxdapi/internal/core"
 	"lxdapi/internal/service"
 	"lxdapi/pkg/response"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -27,10 +29,94 @@ type ContainerVerifyAttempt struct {
 }
 
 const (
-	containerMaxAttempts = 5
-	containerLockDuration = 15 * time.Minute
-	containerResetDuration = 5 * time.Minute
+	containerMaxAttempts      = 5
+	containerLockDuration     = 15 * time.Minute
+	containerResetDuration    = 5 * time.Minute
+	CONTAINER_MAX_RATE_LIMIT  = 10000
 )
+
+func is_container_attempt_expired(attempt *ContainerVerifyAttempt, now time.Time) bool {
+	if !attempt.LockedUntil.IsZero() && now.Before(attempt.LockedUntil) {
+		return false
+	}
+	return now.Sub(attempt.LastAttempt) > containerResetDuration
+}
+
+func evict_container_attempts_locked(now time.Time) {
+	if len(containerVerifyAttempts.attempts) < CONTAINER_MAX_RATE_LIMIT {
+		return
+	}
+	for k, v := range containerVerifyAttempts.attempts {
+		if is_container_attempt_expired(v, now) {
+			delete(containerVerifyAttempts.attempts, k)
+		}
+	}
+	if len(containerVerifyAttempts.attempts) < CONTAINER_MAX_RATE_LIMIT {
+		return
+	}
+	oldest_key := ""
+	var oldest_time time.Time
+	for k, v := range containerVerifyAttempts.attempts {
+		if oldest_key == "" || v.LastAttempt.Before(oldest_time) {
+			oldest_key = k
+			oldest_time = v.LastAttempt
+		}
+	}
+	if oldest_key != "" {
+		delete(containerVerifyAttempts.attempts, oldest_key)
+	}
+}
+
+func check_container_locked(client_ip string, now time.Time) (bool, int) {
+	containerVerifyAttempts.Lock()
+	defer containerVerifyAttempts.Unlock()
+	attempt, exists := containerVerifyAttempts.attempts[client_ip]
+	if !exists {
+		return false, 0
+	}
+	if !attempt.LockedUntil.IsZero() && now.Before(attempt.LockedUntil) {
+		remaining := int(attempt.LockedUntil.Sub(now).Minutes()) + 1
+		return true, remaining
+	}
+	if !attempt.LockedUntil.IsZero() && !now.Before(attempt.LockedUntil) {
+		attempt.Count = 0
+		attempt.LockedUntil = time.Time{}
+	}
+	if now.Sub(attempt.LastAttempt) > containerResetDuration {
+		delete(containerVerifyAttempts.attempts, client_ip)
+	}
+	return false, 0
+}
+
+func record_container_failure(client_ip string, now time.Time) (bool, int) {
+	containerVerifyAttempts.Lock()
+	defer containerVerifyAttempts.Unlock()
+	attempt, exists := containerVerifyAttempts.attempts[client_ip]
+	if !exists {
+		evict_container_attempts_locked(now)
+		attempt = &ContainerVerifyAttempt{}
+		containerVerifyAttempts.attempts[client_ip] = attempt
+	} else if !attempt.LockedUntil.IsZero() && !now.Before(attempt.LockedUntil) {
+		attempt.Count = 0
+		attempt.LockedUntil = time.Time{}
+	}
+	if now.Sub(attempt.LastAttempt) > containerResetDuration {
+		attempt.Count = 0
+	}
+	attempt.Count++
+	attempt.LastAttempt = now
+	if attempt.Count >= containerMaxAttempts {
+		attempt.LockedUntil = now.Add(containerLockDuration)
+		return true, int(containerLockDuration.Minutes())
+	}
+	return false, containerMaxAttempts - attempt.Count
+}
+
+func reset_container_attempts(client_ip string) {
+	containerVerifyAttempts.Lock()
+	defer containerVerifyAttempts.Unlock()
+	delete(containerVerifyAttempts.attempts, client_ip)
+}
 
 // GetCaptcha 获取验证码
 // @Summary 获取验证码
@@ -51,6 +137,13 @@ func GetCaptcha(c *gin.Context) {
 	}
 
 	session := sessions.Default(c)
+	session.Options(sessions.Options{
+		MaxAge:   3600,
+		HttpOnly: true,
+		Secure:   core.GlobalConfig.System.Server.TLS.Enabled,
+		SameSite: http.SameSiteLaxMode,
+		Path:     "/",
+	})
 	session.Set("container_captcha_id", id)
 	session.Save()
 
@@ -82,33 +175,12 @@ func VerifyAccess(c *gin.Context) {
 		return
 	}
 
-	clientIP := c.ClientIP()
-	
-	containerVerifyAttempts.Lock()
-	attempt, exists := containerVerifyAttempts.attempts[clientIP]
-	if !exists {
-		attempt = &ContainerVerifyAttempt{}
-		containerVerifyAttempts.attempts[clientIP] = attempt
-	}
-	
+	client_ip := c.ClientIP()
 	now := time.Now()
-	
-	if !attempt.LockedUntil.IsZero() && now.Before(attempt.LockedUntil) {
-		remaining := int(attempt.LockedUntil.Sub(now).Minutes())
-		containerVerifyAttempts.Unlock()
-		response.Error(c, 429, fmt.Sprintf("验证已被锁定，请在%d分钟后重试", remaining+1))
+	if locked, remaining := check_container_locked(client_ip, now); locked {
+		response.Error(c, 429, fmt.Sprintf("验证已被锁定，请在%d分钟后重试", remaining))
 		return
 	}
-	
-	if attempt.LockedUntil.Before(now) && !attempt.LockedUntil.IsZero() {
-		attempt.Count = 0
-		attempt.LockedUntil = time.Time{}
-	}
-	
-	if now.Sub(attempt.LastAttempt) > containerResetDuration {
-		attempt.Count = 0
-	}
-	containerVerifyAttempts.Unlock()
 
 	session := sessions.Default(c)
 	captchaID := session.Get("container_captcha_id")
@@ -126,25 +198,16 @@ func VerifyAccess(c *gin.Context) {
 
 	cred, err := service.GetContainerByHash(req.Hash)
 	if err != nil {
-		containerVerifyAttempts.Lock()
-		attempt.Count++
-		attempt.LastAttempt = now
-		
-		if attempt.Count >= containerMaxAttempts {
-			attempt.LockedUntil = now.Add(containerLockDuration)
-			containerVerifyAttempts.Unlock()
-			response.Error(c, 429, fmt.Sprintf("验证失败次数过多，已被锁定%d分钟", int(containerLockDuration.Minutes())))
+		locked, remaining_or_mins := record_container_failure(client_ip, time.Now())
+		if locked {
+			response.Error(c, 429, fmt.Sprintf("验证失败次数过多，已被锁定%d分钟", remaining_or_mins))
 			return
 		}
-		containerVerifyAttempts.Unlock()
-		
-		response.Error(c, 401, fmt.Sprintf("访问码无效，剩余尝试次数: %d", containerMaxAttempts-attempt.Count))
+		response.Error(c, 401, fmt.Sprintf("访问码无效，剩余尝试次数: %d", remaining_or_mins))
 		return
 	}
 
-	containerVerifyAttempts.Lock()
-	delete(containerVerifyAttempts.attempts, clientIP)
-	containerVerifyAttempts.Unlock()
+	reset_container_attempts(client_ip)
 
 	response.Success(c, gin.H{
 		"container_name": cred.ContainerName,

@@ -70,13 +70,36 @@ type TemplateData struct {
 }
 
 func (g *ConfigGenerator) generateProxyConfig(proxy *models.ReverseProxy) error {
+	if err := validateDomain(proxy.Domain); err != nil {
+		return err
+	}
+	if err := validateTargetIP(proxy.TargetIP); err != nil {
+		return err
+	}
+	if err := validateTargetPort(proxy.TargetPort); err != nil {
+		return err
+	}
+
+	safeDomain := sanitizeDomain(proxy.Domain)
+	if safeDomain == "" || strings.Contains(safeDomain, "..") {
+		return fmt.Errorf("域名包含非法路径字符")
+	}
+
 	var certPath, keyPath string
 	var sslEnabled bool
 	
 	if proxy.Protocol == "https" && proxy.EnableSSL {
 		sslEnabled = true
-		certPath = filepath.Join(g.sslDir, fmt.Sprintf("%s.crt", proxy.Domain))
-		keyPath = filepath.Join(g.sslDir, fmt.Sprintf("%s.key", proxy.Domain))
+		sslBase, err := filepath.Abs(g.sslDir)
+		if err != nil {
+			return fmt.Errorf("解析SSL目录失败: %v", err)
+		}
+		sslBase = filepath.Clean(sslBase)
+		certPath = filepath.Clean(filepath.Join(sslBase, fmt.Sprintf("%s.crt", safeDomain)))
+		keyPath = filepath.Clean(filepath.Join(sslBase, fmt.Sprintf("%s.key", safeDomain)))
+		if !isPathWithinDir(certPath, sslBase) || !isPathWithinDir(keyPath, sslBase) {
+			return fmt.Errorf("证书路径超出允许范围")
+		}
 		
 		if proxy.SSLCert != "" && proxy.SSLKey != "" {
 			if err := os.WriteFile(certPath, []byte(proxy.SSLCert), 0644); err != nil {
@@ -90,17 +113,6 @@ func (g *ConfigGenerator) generateProxyConfig(proxy *models.ReverseProxy) error 
 				return fmt.Errorf("生成自签名证书失败: %v", err)
 			}
 		}
-		
-		absCertPath, err := filepath.Abs(certPath)
-		if err != nil {
-			return fmt.Errorf("获取证书绝对路径失败: %v", err)
-		}
-		absKeyPath, err := filepath.Abs(keyPath)
-		if err != nil {
-			return fmt.Errorf("获取密钥绝对路径失败: %v", err)
-		}
-		certPath = absCertPath
-		keyPath = absKeyPath
 	}
 	
 	ipv6Enabled := g.hasIPv6()
@@ -122,7 +134,15 @@ func (g *ConfigGenerator) generateProxyConfig(proxy *models.ReverseProxy) error 
 	}
 	config := buf.String()
 	
-	configPath := filepath.Join(g.sitesDir, fmt.Sprintf("%s.conf", sanitizeDomain(proxy.Domain)))
+	sitesBase, err := filepath.Abs(g.sitesDir)
+	if err != nil {
+		return fmt.Errorf("解析站点配置目录失败: %v", err)
+	}
+	sitesBase = filepath.Clean(sitesBase)
+	configPath := filepath.Clean(filepath.Join(sitesBase, fmt.Sprintf("%s.conf", safeDomain)))
+	if !isPathWithinDir(configPath, sitesBase) {
+		return fmt.Errorf("配置文件路径超出允许范围")
+	}
 	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
 		return fmt.Errorf("写入配置文件失败: %v", err)
 	}
@@ -227,9 +247,28 @@ func (g *ConfigGenerator) cleanupOldConfigs() error {
 	return nil
 }
 
+func isPathWithinDir(targetPath, baseDir string) bool {
+	rel, err := filepath.Rel(baseDir, targetPath)
+	if err != nil {
+		return false
+	}
+	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+}
+
 func sanitizeDomain(domain string) string {
-	domain = strings.ReplaceAll(domain, ":", "_")
-	domain = strings.ReplaceAll(domain, "/", "_")
-	domain = strings.ReplaceAll(domain, "\\", "_")
-	return domain
+	domain = strings.TrimSpace(domain)
+	domain = strings.ReplaceAll(domain, "..", "_")
+	replacer := strings.NewReplacer(
+		":", "_",
+		"/", "_",
+		"\\", "_",
+		" ", "_",
+		"\t", "_",
+		"\r", "_",
+		"\n", "_",
+		";", "_",
+		"{", "_",
+		"}", "_",
+	)
+	return replacer.Replace(domain)
 }

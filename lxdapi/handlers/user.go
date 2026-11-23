@@ -1,9 +1,7 @@
 package handlers
 
 import (
-	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
-	"lxdapi/internal/service"
 	"lxdapi/pkg/utils"
 	"net/http"
 )
@@ -13,23 +11,7 @@ func UserLogin(c *gin.Context) {
 }
 
 func UserDashboard(c *gin.Context) {
-	token := c.Query("token")
-	if token != "" {
-		accessToken, err := service.ValidateAccessToken(token)
-		if err == nil && accessToken.Type == "user" {
-			user, err := service.GetUserByUsername(accessToken.Target)
-			if err == nil {
-				session := sessions.Default(c)
-				session.Set("user_logged_in", true)
-				session.Set("user_username", user.Username)
-				session.Set("user_id", user.ID)
-				session.Save()
-				c.Redirect(http.StatusFound, "/user/containers")
-				return
-			}
-		}
-	}
-	c.Redirect(http.StatusFound, "/user/login")
+	c.Redirect(http.StatusFound, "/user/containers")
 }
 
 func UserContainers(c *gin.Context) {

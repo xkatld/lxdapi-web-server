@@ -12,6 +12,8 @@ import (
 	"lxdapi/pkg/logger"
 )
 
+const MaxPortMappingCount = 65535
+
 type PortMappingService struct {
 	lxcClient *lxc.Client
 }
@@ -20,6 +22,51 @@ func NewPortMappingService() *PortMappingService {
 	return &PortMappingService{
 		lxcClient: lxc.NewClient(),
 	}
+}
+
+func ValidatePortMappingProtocol(protocol string) error {
+	if protocol != "tcp" && protocol != "udp" && protocol != "both" {
+		return fmt.Errorf("协议必须是tcp、udp或both")
+	}
+	return nil
+}
+
+func NormalizeAndValidatePortCount(portCount int) (int, error) {
+	if portCount < 0 {
+		return 0, fmt.Errorf("端口数量不能小于1")
+	}
+	if portCount == 0 {
+		portCount = 1
+	}
+	if portCount > MaxPortMappingCount {
+		return 0, fmt.Errorf("端口数量不能超过%d", MaxPortMappingCount)
+	}
+	return portCount, nil
+}
+
+func ValidatePortRange(port, portCount int, label string) (int, error) {
+	if port < 1 || port > 65535 {
+		return 0, fmt.Errorf("%s必须在 1-65535 范围内", label)
+	}
+	if portCount < 1 || portCount > MaxPortMappingCount {
+		return 0, fmt.Errorf("端口数量必须在 1-%d 范围内", MaxPortMappingCount)
+	}
+	endPort := port + portCount - 1
+	if endPort < 1 || endPort > 65535 {
+		return 0, fmt.Errorf("%s结束端口必须在 1-65535 范围内", label)
+	}
+	return endPort, nil
+}
+
+func ValidatePublicPortRange(publicPort, portCount, rangeStart, rangeEnd int) (int, error) {
+	publicPortEnd, err := ValidatePortRange(publicPort, portCount, "公网端口")
+	if err != nil {
+		return 0, fmt.Errorf("公网端口范围必须在 %d-%d 且在 1-65535 范围内", rangeStart, rangeEnd)
+	}
+	if publicPort < rangeStart || publicPortEnd > rangeEnd {
+		return 0, fmt.Errorf("公网端口范围必须在 %d-%d 且在 1-65535 范围内", rangeStart, rangeEnd)
+	}
+	return publicPortEnd, nil
 }
 
 func (s *PortMappingService) CheckV4PortRangeAvailable(publicIP string, publicPort, publicPortEnd int, protocol string) error {
@@ -183,6 +230,15 @@ func (s *PortMappingService) CheckV6PortRangeAvailable(publicIP string, publicPo
 }
 
 func (s *PortMappingService) AllocateV4Mapping(ctx context.Context, containerName, userID string, forwardIP string, displayIP string, publicPort, publicPortEnd, containerPort, containerPortEnd int, protocol, iface, description string) (*models.PortMappingV4, error) {
+	if err := ValidatePortMappingProtocol(protocol); err != nil {
+		return nil, err
+	}
+	if _, err := ValidatePortRange(publicPort, publicPortEnd-publicPort+1, "公网端口"); err != nil {
+		return nil, err
+	}
+	if _, err := ValidatePortRange(containerPort, containerPortEnd-containerPort+1, "容器端口"); err != nil {
+		return nil, err
+	}
 	if iface == "" {
 		return nil, fmt.Errorf("必须指定网卡")
 	}
@@ -237,6 +293,15 @@ func (s *PortMappingService) AllocateV4Mapping(ctx context.Context, containerNam
 }
 
 func (s *PortMappingService) AllocateV6Mapping(ctx context.Context, containerName, userID string, forwardIP string, displayIP string, publicPort, publicPortEnd, containerPort, containerPortEnd int, protocol, iface, description string) (*models.PortMappingV6, error) {
+	if err := ValidatePortMappingProtocol(protocol); err != nil {
+		return nil, err
+	}
+	if _, err := ValidatePortRange(publicPort, publicPortEnd-publicPort+1, "公网端口"); err != nil {
+		return nil, err
+	}
+	if _, err := ValidatePortRange(containerPort, containerPortEnd-containerPort+1, "容器端口"); err != nil {
+		return nil, err
+	}
 	if iface == "" {
 		return nil, fmt.Errorf("必须指定网卡")
 	}

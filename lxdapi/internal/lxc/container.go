@@ -4,12 +4,56 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"lxdapi/pkg/logger"
+	"net"
+	"regexp"
 	"strings"
 	"time"
-	"lxdapi/pkg/logger"
+	"unicode"
 )
 
+var containerNamePattern = regexp.MustCompile("^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$")
+
+func ValidateContainerName(name string) error {
+	if !containerNamePattern.MatchString(name) {
+		return fmt.Errorf("容器名称不合法，仅支持1-63位字母、数字和连字符，且不能以连字符开头或结尾")
+	}
+	return nil
+}
+
+func validateLXCIdentifier(value, label string, allowColonAndSlash bool) error {
+	if value == "" {
+		return fmt.Errorf("%s不能为空", label)
+	}
+	if strings.HasPrefix(value, "-") || strings.HasPrefix(value, "/") {
+		return fmt.Errorf("%s不能以连字符或斜杠开头", label)
+	}
+	if strings.Contains(value, "..") || strings.Contains(value, "\\") {
+		return fmt.Errorf("%s包含非法路径字符", label)
+	}
+	for _, r := range value {
+		if unicode.IsSpace(r) || unicode.IsControl(r) {
+			return fmt.Errorf("%s不能包含空白或控制字符", label)
+		}
+		if !allowColonAndSlash && (r == '/' || r == ':') {
+			return fmt.Errorf("%s包含非法字符", label)
+		}
+	}
+	return nil
+}
+
+func ValidateImageName(image string) error {
+	return validateLXCIdentifier(image, "镜像名称", true)
+}
+
+func ValidateStoragePoolName(pool string) error {
+	return validateLXCIdentifier(pool, "存储池名称", false)
+}
+
 func (c *Client) SetContainerMAC(ctx context.Context, name, macAddress, ingress, egress string) error {
+	if err := ValidateContainerName(name); err != nil {
+		return err
+	}
 	if macAddress != "" {
 		logger.Info("为容器设置MAC地址以固定IP: %s -> %s", name, macAddress)
 		_, err := c.exec(ctx, "config", "device", "override", name, "eth0", fmt.Sprintf("hwaddr=%s", macAddress))
@@ -61,6 +105,15 @@ func (c *Client) GetContainerMAC(ctx context.Context, name string) (string, erro
 }
 
 func (c *Client) CreateContainerWithConfig(ctx context.Context, name, image, storagePool string, cpu int, memory, disk, ingress, egress string, allowNesting, memorySwap, privileged bool, macAddress, cpuAllowance, ioRead, ioWrite string, processesLimit int) error {
+	if err := ValidateContainerName(name); err != nil {
+		return err
+	}
+	if err := ValidateImageName(image); err != nil {
+		return err
+	}
+	if err := ValidateStoragePoolName(storagePool); err != nil {
+		return err
+	}
 	logger.Info("创建容器: %s, 镜像: %s, 存储池: %s", name, image, storagePool)
 	args := []string{"init", image, name, "-s", storagePool}
 	
@@ -180,6 +233,9 @@ func (c *Client) CreateContainer(ctx context.Context, name, image string) error 
 }
 
 func (c *Client) StartContainer(ctx context.Context, name string) error {
+	if err := ValidateContainerName(name); err != nil {
+		return err
+	}
 	logger.Info("启动容器: %s", name)
 	_, err := c.exec(ctx, "start", name)
 	if err != nil {
@@ -190,6 +246,9 @@ func (c *Client) StartContainer(ctx context.Context, name string) error {
 }
 
 func (c *Client) StopContainer(ctx context.Context, name string) error {
+	if err := ValidateContainerName(name); err != nil {
+		return err
+	}
 	logger.Info("停止容器: %s", name)
 	_, err := c.exec(ctx, "stop", name, "--force")
 	if err != nil {
@@ -200,6 +259,9 @@ func (c *Client) StopContainer(ctx context.Context, name string) error {
 }
 
 func (c *Client) RestartContainer(ctx context.Context, name string) error {
+	if err := ValidateContainerName(name); err != nil {
+		return err
+	}
 	logger.Info("重启容器: %s", name)
 	_, err := c.exec(ctx, "restart", name, "--force")
 	if err != nil {
@@ -210,6 +272,9 @@ func (c *Client) RestartContainer(ctx context.Context, name string) error {
 }
 
 func (c *Client) PauseContainer(ctx context.Context, name string) error {
+	if err := ValidateContainerName(name); err != nil {
+		return err
+	}
 	logger.Info("暂停容器: %s", name)
 	_, err := c.exec(ctx, "pause", name)
 	if err != nil {
@@ -220,6 +285,9 @@ func (c *Client) PauseContainer(ctx context.Context, name string) error {
 }
 
 func (c *Client) ResumeContainer(ctx context.Context, name string) error {
+	if err := ValidateContainerName(name); err != nil {
+		return err
+	}
 	logger.Info("恢复容器: %s", name)
 	_, err := c.exec(ctx, "start", name)
 	if err != nil {
@@ -230,6 +298,9 @@ func (c *Client) ResumeContainer(ctx context.Context, name string) error {
 }
 
 func (c *Client) DeleteContainer(ctx context.Context, name string) error {
+	if err := ValidateContainerName(name); err != nil {
+		return err
+	}
 	logger.Info("删除容器: %s", name)
 	
 	if !c.ContainerExists(ctx, name) {
@@ -247,6 +318,12 @@ func (c *Client) DeleteContainer(ctx context.Context, name string) error {
 }
 
 func (c *Client) RebuildContainer(ctx context.Context, name, image string) error {
+	if err := ValidateContainerName(name); err != nil {
+		return err
+	}
+	if err := ValidateImageName(image); err != nil {
+		return err
+	}
 	logger.Info("重装容器: %s, 新镜像: %s", name, image)
 	_, err := c.exec(ctx, "rebuild", image, name, "--force")
 	if err != nil {
@@ -257,6 +334,9 @@ func (c *Client) RebuildContainer(ctx context.Context, name, image string) error
 }
 
 func (c *Client) GetContainerStatus(ctx context.Context, name string) (string, error) {
+	if err := ValidateContainerName(name); err != nil {
+		return "", err
+	}
 	type State struct {
 		Status string `json:"status"`
 	}
@@ -272,21 +352,41 @@ func (c *Client) GetContainerStatus(ctx context.Context, name string) (string, e
 }
 
 func (c *Client) ContainerExists(ctx context.Context, name string) bool {
+	if err := ValidateContainerName(name); err != nil {
+		return false
+	}
 	_, err := c.exec(ctx, "info", name)
 	return err == nil
 }
 
 func (c *Client) ExecInContainer(ctx context.Context, name string, cmd []string) (string, error) {
+	if err := ValidateContainerName(name); err != nil {
+		return "", err
+	}
 	args := append([]string{"exec", name, "--"}, cmd...)
 	return c.exec(ctx, args...)
 }
 
+func (c *Client) ExecInContainerWithStdin(ctx context.Context, name, stdin string, cmd []string) (string, error) {
+	if err := ValidateContainerName(name); err != nil {
+		return "", err
+	}
+	args := append([]string{"exec", name, "--"}, cmd...)
+	return c.execWithStdin(ctx, stdin, args...)
+}
+
 func (c *Client) SetContainerConfig(ctx context.Context, name, key, value string) error {
+	if err := ValidateContainerName(name); err != nil {
+		return err
+	}
 	_, err := c.exec(ctx, "config", "set", name, key, value)
 	return err
 }
 
 func (c *Client) SetRootPassword(ctx context.Context, name, password string) error {
+	if err := ValidateContainerName(name); err != nil {
+		return err
+	}
 	logger.Info("设置容器 %s 的root密码", name)
 	
 	time.Sleep(2 * time.Second)
@@ -348,6 +448,9 @@ func isInvalidIPv4(ip string) bool {
 }
 
 func (c *Client) UpdateContainerConfig(ctx context.Context, name string, cpu int, memory, disk, ingress, egress, cpuAllowance, ioRead, ioWrite string, processesLimit int, privileged, memorySwap, allowNesting *bool) error {
+	if err := ValidateContainerName(name); err != nil {
+		return err
+	}
 	logger.Info("更新容器配置: %s", name)
 
 	if cpu > 0 {
@@ -461,26 +564,37 @@ func (c *Client) GetContainerIPv6(ctx context.Context, name string) (string, err
 }
 
 func (c *Client) SetContainerDNS(ctx context.Context, name string, dnsServers []string) error {
+	if err := ValidateContainerName(name); err != nil {
+		return err
+	}
 	if len(dnsServers) == 0 {
 		return fmt.Errorf("DNS服务器列表不能为空")
 	}
-	
-	var content string
+
+	var builder strings.Builder
 	for _, dns := range dnsServers {
-		content += fmt.Sprintf("nameserver %s\\n", dns)
+		trimmed := strings.TrimSpace(dns)
+		if net.ParseIP(trimmed) == nil {
+			return fmt.Errorf("无效的DNS地址: %s", dns)
+		}
+		builder.WriteString("nameserver ")
+		builder.WriteString(trimmed)
+		builder.WriteString("\n")
 	}
-	
-	cmd := []string{"sh", "-c", fmt.Sprintf("printf '%s' > /etc/resolv.conf", content)}
-	_, err := c.ExecInContainer(ctx, name, cmd)
+
+	_, err := c.ExecInContainerWithStdin(ctx, name, builder.String(), []string{"tee", "/etc/resolv.conf"})
 	if err != nil {
 		return fmt.Errorf("设置DNS失败: %v", err)
 	}
-	
+
 	logger.OK("容器 %s DNS设置成功: %v", name, dnsServers)
 	return nil
 }
 
 func (c *Client) GetContainerDNS(ctx context.Context, name string) ([]string, error) {
+	if err := ValidateContainerName(name); err != nil {
+		return nil, err
+	}
 	output, err := c.ExecInContainer(ctx, name, []string{"cat", "/etc/resolv.conf"})
 	if err != nil {
 		return nil, fmt.Errorf("获取DNS失败: %v", err)

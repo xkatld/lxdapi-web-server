@@ -63,6 +63,18 @@ func CreateContainer(c *gin.Context) {
 		return
 	}
 
+	if req.CPU < 0 || req.Memory < 0 || req.Disk < 0 || req.TrafficLimit < 0 ||
+		req.IPv4PoolLimit < 0 || req.IPv4MappingLimit < 0 || req.IPv6PoolLimit < 0 ||
+		req.IPv6MappingLimit < 0 || req.ReverseProxyLimit < 0 {
+		response.Error(c, 400, "资源与限制参数不能为负数")
+		return
+	}
+
+	if code, msg := service.CheckTemplateAccess(req.Image, username.(string)); code != 0 {
+		response.Error(c, code, msg)
+		return
+	}
+
 	if user.MaxCPUPerContainer > 0 && req.CPU > user.MaxCPUPerContainer {
 		response.Error(c, 400, fmt.Sprintf("单容器CPU超过限制，最大允许%d核", user.MaxCPUPerContainer))
 		return
@@ -81,23 +93,28 @@ func CreateContainer(c *gin.Context) {
 		response.Error(c, 400, "磁盘配额不足")
 		return
 	}
-	if user.IPv4PoolLimit > 0 && req.IPv4PoolLimit > user.IPv4PoolLimit {
+	usedTrafficGB := float64(stats.UsedTraffic) / (1024 * 1024 * 1024)
+	if user.TrafficLimit > 0 && usedTrafficGB+float64(req.TrafficLimit) > float64(user.TrafficLimit) {
+		response.Error(c, 400, "流量配额不足")
+		return
+	}
+	if user.IPv4PoolLimit > 0 && stats.UsedIPv4Pool+int64(req.IPv4PoolLimit) > int64(user.IPv4PoolLimit) {
 		response.Error(c, 400, "IPv4地址池限制超过配额")
 		return
 	}
-	if user.IPv4MappingLimit > 0 && req.IPv4MappingLimit > user.IPv4MappingLimit {
+	if user.IPv4MappingLimit > 0 && stats.UsedIPv4Map+int64(req.IPv4MappingLimit) > int64(user.IPv4MappingLimit) {
 		response.Error(c, 400, "IPv4端口映射限制超过配额")
 		return
 	}
-	if user.IPv6PoolLimit > 0 && req.IPv6PoolLimit > user.IPv6PoolLimit {
+	if user.IPv6PoolLimit > 0 && stats.UsedIPv6Pool+int64(req.IPv6PoolLimit) > int64(user.IPv6PoolLimit) {
 		response.Error(c, 400, "IPv6地址池限制超过配额")
 		return
 	}
-	if user.IPv6MappingLimit > 0 && req.IPv6MappingLimit > user.IPv6MappingLimit {
+	if user.IPv6MappingLimit > 0 && stats.UsedIPv6Map+int64(req.IPv6MappingLimit) > int64(user.IPv6MappingLimit) {
 		response.Error(c, 400, "IPv6端口映射限制超过配额")
 		return
 	}
-	if user.ReverseProxyLimit > 0 && req.ReverseProxyLimit > user.ReverseProxyLimit {
+	if user.ReverseProxyLimit > 0 && stats.UsedProxy+int64(req.ReverseProxyLimit) > int64(user.ReverseProxyLimit) {
 		response.Error(c, 400, "反向代理限制超过配额")
 		return
 	}
@@ -123,32 +140,33 @@ func CreateContainer(c *gin.Context) {
 		IORead:            user.IORead,
 		IOWrite:           user.IOWrite,
 		ProcessesLimit:    user.ProcessesLimit,
-		AllowNesting:      user.AllowNesting,
+		AllowNesting:      false,
 		MemorySwap:        user.MemorySwap,
 	}
 
 	params := map[string]interface{}{
-		"name":               createReq.Name,
-		"image":              createReq.Image,
-		"cpu":                createReq.CPU,
-		"memory":             createReq.Memory,
-		"disk":               createReq.Disk,
-		"ingress":            createReq.Ingress,
-		"egress":             createReq.Egress,
-		"traffic_limit":      createReq.TrafficLimit,
-		"allow_nesting":      createReq.AllowNesting,
-		"memory_swap":        createReq.MemorySwap,
-		"privileged":         false,
-		"username":           createReq.Username,
-		"ipv4_pool_limit":    createReq.IPv4PoolLimit,
-		"ipv4_mapping_limit": createReq.IPv4MappingLimit,
-		"ipv6_pool_limit":    createReq.IPv6PoolLimit,
-		"ipv6_mapping_limit": createReq.IPv6MappingLimit,
-		"password":           createReq.Password,
-		"cpu_allowance":      createReq.CPUAllowance,
-		"io_read":            createReq.IORead,
-		"io_write":           createReq.IOWrite,
-		"processes_limit":    createReq.ProcessesLimit,
+		"name":                createReq.Name,
+		"image":               createReq.Image,
+		"cpu":                 createReq.CPU,
+		"memory":              createReq.Memory,
+		"disk":                createReq.Disk,
+		"ingress":             createReq.Ingress,
+		"egress":              createReq.Egress,
+		"traffic_limit":       createReq.TrafficLimit,
+		"allow_nesting":       false,
+		"memory_swap":         createReq.MemorySwap,
+		"privileged":          false,
+		"username":            createReq.Username,
+		"ipv4_pool_limit":     createReq.IPv4PoolLimit,
+		"ipv4_mapping_limit":  createReq.IPv4MappingLimit,
+		"ipv6_pool_limit":     createReq.IPv6PoolLimit,
+		"ipv6_mapping_limit":  createReq.IPv6MappingLimit,
+		"reverse_proxy_limit": createReq.ReverseProxyLimit,
+		"password":            createReq.Password,
+		"cpu_allowance":       createReq.CPUAllowance,
+		"io_read":             createReq.IORead,
+		"io_write":            createReq.IOWrite,
+		"processes_limit":     createReq.ProcessesLimit,
 	}
 
 	task, err := executor.CreateTask(createReq.Name, "create", createReq.Username, params, func(ctx context.Context) error {
@@ -389,9 +407,10 @@ func ContainerAction(c *gin.Context) {
 		}
 		c.ShouldBindJSON(&req)
 
-		finalImage := req.Image
-		if finalImage == "" {
-			finalImage = container.Image
+		finalImage, code, msg := service.ResolveReinstallTemplateAccess(req.Image, container.Image, username.(string))
+		if code != 0 {
+			response.Error(c, code, msg)
+			return
 		}
 
 		params := map[string]interface{}{
@@ -405,7 +424,7 @@ func ContainerAction(c *gin.Context) {
 		}
 
 		task, err := executor.CreateTask(name, "reinstall", username.(string), params, func(ctx context.Context) error {
-			return containerService.Reinstall(ctx, name, req.Image, req.Password)
+			return containerService.Reinstall(ctx, name, finalImage, req.Password)
 		})
 		if err != nil {
 			logger.Error("创建重装任务失败: %v", err)
@@ -531,6 +550,18 @@ func GetContainerConfig(c *gin.Context) {
 // @Failure 500 {object} response.Response "更新失败"
 // @Security UserSession
 // @Router /api/user/containers/:name/config [put]
+type UserUpdateContainerConfigRequest struct {
+	CPU               *int    `json:"cpu"`
+	Memory            *int    `json:"memory"`
+	Disk              *int    `json:"disk"`
+	IPv4PoolLimit     *int    `json:"ipv4_pool_limit"`
+	IPv4MappingLimit  *int    `json:"ipv4_mapping_limit"`
+	IPv6PoolLimit     *int    `json:"ipv6_pool_limit"`
+	IPv6MappingLimit  *int    `json:"ipv6_mapping_limit"`
+	ReverseProxyLimit *int    `json:"reverse_proxy_limit"`
+	Remark            *string `json:"remark"`
+}
+
 func UpdateContainerConfig(c *gin.Context) {
 	name := c.Param("name")
 	if name == "" {
@@ -556,10 +587,34 @@ func UpdateContainerConfig(c *gin.Context) {
 		return
 	}
 
-	var req models.UpdateContainerConfigRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var userReq UserUpdateContainerConfigRequest
+	if err := c.ShouldBindJSON(&userReq); err != nil {
 		response.Error(c, 400, "参数错误: "+err.Error())
 		return
+	}
+
+	if (userReq.CPU != nil && *userReq.CPU < 0) ||
+		(userReq.Memory != nil && *userReq.Memory < 0) ||
+		(userReq.Disk != nil && *userReq.Disk < 0) ||
+		(userReq.IPv4PoolLimit != nil && *userReq.IPv4PoolLimit < 0) ||
+		(userReq.IPv4MappingLimit != nil && *userReq.IPv4MappingLimit < 0) ||
+		(userReq.IPv6PoolLimit != nil && *userReq.IPv6PoolLimit < 0) ||
+		(userReq.IPv6MappingLimit != nil && *userReq.IPv6MappingLimit < 0) ||
+		(userReq.ReverseProxyLimit != nil && *userReq.ReverseProxyLimit < 0) {
+		response.Error(c, 400, "配额参数不能为负数")
+		return
+	}
+
+	req := models.UpdateContainerConfigRequest{
+		CPU:               userReq.CPU,
+		Memory:            userReq.Memory,
+		Disk:              userReq.Disk,
+		IPv4PoolLimit:     userReq.IPv4PoolLimit,
+		IPv4MappingLimit:  userReq.IPv4MappingLimit,
+		IPv6PoolLimit:     userReq.IPv6PoolLimit,
+		IPv6MappingLimit:  userReq.IPv6MappingLimit,
+		ReverseProxyLimit: userReq.ReverseProxyLimit,
+		Remark:            userReq.Remark,
 	}
 
 	user, err := service.GetUserByUsername(username.(string))

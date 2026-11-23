@@ -34,3 +34,67 @@ type BrandSettings struct {
 	UpdatedAt            time.Time `json:"updated_at"`
 	CreatedAt            time.Time `json:"created_at"`
 }
+
+type PublicBrandSettings struct {
+	ID                      int       `json:"id"`
+	AdminSystemName         string    `json:"admin_system_name"`
+	AdminSystemTitle        string    `json:"admin_system_title"`
+	AdminLoginTitle         string    `json:"admin_login_title"`
+	AdminBgImage            string    `json:"admin_bg_image"`
+	AdminBgOpacity          int       `json:"admin_bg_opacity"`
+	AdminContentOpacity     int       `json:"admin_content_opacity"`
+	UserSystemName          string    `json:"user_system_name"`
+	UserSystemTitle         string    `json:"user_system_title"`
+	UserLoginTitle          string    `json:"user_login_title"`
+	UserBgImage             string    `json:"user_bg_image"`
+	UserBgOpacity           int       `json:"user_bg_opacity"`
+	UserContentOpacity      int       `json:"user_content_opacity"`
+	ContainerSystemName     string    `json:"container_system_name"`
+	ContainerSystemTitle    string    `json:"container_system_title"`
+	ContainerLoginTitle     string    `json:"container_login_title"`
+	ContainerBgImage        string    `json:"container_bg_image"`
+	ContainerBgOpacity      int       `json:"container_bg_opacity"`
+	ContainerContentOpacity int       `json:"container_content_opacity"`
+	UserNotice              string    `json:"user_notice"`
+	UserNoticeOpacity       int       `json:"user_notice_opacity"`
+	ContainerNotice         string    `json:"container_notice"`
+	ContainerNoticeOpacity  int       `json:"container_notice_opacity"`
+	FaviconUrl              string    `json:"favicon_url"`
+	FooterText              string    `json:"footer_text"`
+	UseLocalCDN             bool      `json:"use_local_cdn"`
+	UpdatedAt               time.Time `json:"updated_at"`
+	CreatedAt               time.Time `json:"created_at"`
+}
+
+func (b *BrandSettings) ToPublic() PublicBrandSettings {
+	return PublicBrandSettings{
+		ID:                      b.ID,
+		AdminSystemName:         b.AdminSystemName,
+		AdminSystemTitle:        b.AdminSystemTitle,
+		AdminLoginTitle:         b.AdminLoginTitle,
+		AdminBgImage:            b.AdminBgImage,
+		AdminBgOpacity:          b.AdminBgOpacity,
+		AdminContentOpacity:     b.AdminContentOpacity,
+		UserSystemName:          b.UserSystemName,
+		UserSystemTitle:         b.UserSystemTitle,
+		UserLoginTitle:          b.UserLoginTitle,
+		UserBgImage:             b.UserBgImage,
+		UserBgOpacity:           b.UserBgOpacity,
+		UserContentOpacity:      b.UserContentOpacity,
+		ContainerSystemName:     b.ContainerSystemName,
+		ContainerSystemTitle:    b.ContainerSystemTitle,
+		ContainerLoginTitle:     b.ContainerLoginTitle,
+		ContainerBgImage:        b.ContainerBgImage,
+		ContainerBgOpacity:      b.ContainerBgOpacity,
+		ContainerContentOpacity: b.ContainerContentOpacity,
+		UserNotice:              b.UserNotice,
+		UserNoticeOpacity:       b.UserNoticeOpacity,
+		ContainerNotice:         b.ContainerNotice,
+		ContainerNoticeOpacity:  b.ContainerNoticeOpacity,
+		FaviconUrl:              b.FaviconUrl,
+		FooterText:              b.FooterText,
+		UseLocalCDN:             b.UseLocalCDN,
+		UpdatedAt:               b.UpdatedAt,
+		CreatedAt:               b.CreatedAt,
+	}
+}

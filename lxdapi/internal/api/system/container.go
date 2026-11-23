@@ -4,8 +4,10 @@ import (
 	"context"
 	"github.com/gin-gonic/gin"
 	"lxdapi/internal/executor"
+	"lxdapi/internal/lxc"
 	"lxdapi/internal/service"
 	"lxdapi/models"
+	"lxdapi/pkg/auth"
 	"lxdapi/pkg/response"
 )
 
@@ -13,6 +15,15 @@ var containerService *service.ContainerService
 
 func InitContainerService(svc *service.ContainerService) {
 	containerService = svc
+}
+
+func isAdminAuthLevel(c *gin.Context) bool {
+	authLevelVal, exists := c.Get("auth_level")
+	if !exists {
+		return false
+	}
+	authLevel, ok := authLevelVal.(auth.APILevel)
+	return ok && authLevel == auth.LevelAdmin
 }
 
 // CreateContainer 创建容器
@@ -34,28 +45,55 @@ func CreateContainer(c *gin.Context) {
 		return
 	}
 
+	if err := lxc.ValidateContainerName(req.Name); err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
+	if err := lxc.ValidateImageName(req.Image); err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
+	if req.CPU < 0 || req.Memory < 0 || req.Disk < 0 || req.Ingress < 0 || req.Egress < 0 ||
+		req.TrafficLimit < 0 || req.IPv4PoolLimit < 0 || req.IPv4MappingLimit < 0 ||
+		req.IPv6PoolLimit < 0 || req.IPv6MappingLimit < 0 || req.ReverseProxyLimit < 0 ||
+		req.CPUAllowance < 0 || req.IORead < 0 || req.IOWrite < 0 || req.ProcessesLimit < 0 {
+		response.Error(c, 400, "资源与限制参数不能为负数")
+		return
+	}
+
+	isAdmin := isAdminAuthLevel(c)
+	if !isAdmin && (req.Privileged || req.AllowNesting) {
+		response.Error(c, 403, "系统接口禁止开启特权或嵌套容器")
+		return
+	}
+	if !isAdmin {
+		req.Privileged = false
+		req.AllowNesting = false
+	}
+
 	params := map[string]interface{}{
-		"name":               req.Name,
-		"image":              req.Image,
-		"cpu":                req.CPU,
-		"memory":             req.Memory,
-		"disk":               req.Disk,
-		"ingress":            req.Ingress,
-		"egress":             req.Egress,
-		"traffic_limit":      req.TrafficLimit,
-		"allow_nesting":      req.AllowNesting,
-		"memory_swap":        req.MemorySwap,
-		"privileged":         req.Privileged,
-		"username":           req.Username,
-		"ipv4_pool_limit":    req.IPv4PoolLimit,
-		"ipv4_mapping_limit": req.IPv4MappingLimit,
-		"ipv6_pool_limit":    req.IPv6PoolLimit,
-		"ipv6_mapping_limit": req.IPv6MappingLimit,
-		"password":           req.Password,
-		"cpu_allowance":      req.CPUAllowance,
-		"io_read":            req.IORead,
-		"io_write":           req.IOWrite,
-		"processes_limit":    req.ProcessesLimit,
+		"name":                req.Name,
+		"image":               req.Image,
+		"cpu":                 req.CPU,
+		"memory":              req.Memory,
+		"disk":                req.Disk,
+		"ingress":             req.Ingress,
+		"egress":              req.Egress,
+		"traffic_limit":       req.TrafficLimit,
+		"allow_nesting":       req.AllowNesting,
+		"memory_swap":         req.MemorySwap,
+		"privileged":          req.Privileged,
+		"username":            req.Username,
+		"ipv4_pool_limit":     req.IPv4PoolLimit,
+		"ipv4_mapping_limit":  req.IPv4MappingLimit,
+		"ipv6_pool_limit":     req.IPv6PoolLimit,
+		"ipv6_mapping_limit":  req.IPv6MappingLimit,
+		"reverse_proxy_limit": req.ReverseProxyLimit,
+		"password":            req.Password,
+		"cpu_allowance":       req.CPUAllowance,
+		"io_read":             req.IORead,
+		"io_write":            req.IOWrite,
+		"processes_limit":     req.ProcessesLimit,
 	}
 
 	task, err := executor.CreateTask(req.Name, "create", req.Username, params, func(ctx context.Context) error {
@@ -352,6 +390,30 @@ func UpdateContainerConfig(c *gin.Context) {
 	var req models.UpdateContainerConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, 400, "参数错误: "+err.Error())
+		return
+	}
+
+	if (req.CPU != nil && *req.CPU < 0) ||
+		(req.Memory != nil && *req.Memory < 0) ||
+		(req.Disk != nil && *req.Disk < 0) ||
+		(req.Ingress != nil && *req.Ingress < 0) ||
+		(req.Egress != nil && *req.Egress < 0) ||
+		(req.CPUAllowance != nil && *req.CPUAllowance < 0) ||
+		(req.IORead != nil && *req.IORead < 0) ||
+		(req.IOWrite != nil && *req.IOWrite < 0) ||
+		(req.ProcessesLimit != nil && *req.ProcessesLimit < 0) ||
+		(req.TrafficLimit != nil && *req.TrafficLimit < 0) ||
+		(req.IPv4PoolLimit != nil && *req.IPv4PoolLimit < 0) ||
+		(req.IPv4MappingLimit != nil && *req.IPv4MappingLimit < 0) ||
+		(req.IPv6PoolLimit != nil && *req.IPv6PoolLimit < 0) ||
+		(req.IPv6MappingLimit != nil && *req.IPv6MappingLimit < 0) ||
+		(req.ReverseProxyLimit != nil && *req.ReverseProxyLimit < 0) {
+		response.Error(c, 400, "资源与限制参数不能为负数")
+		return
+	}
+
+	if !isAdminAuthLevel(c) && (req.Privileged != nil || req.AllowNesting != nil) {
+		response.Error(c, 403, "系统接口禁止修改特权或嵌套容器配置")
 		return
 	}
 

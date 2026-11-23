@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"regexp"
 
 	"github.com/gin-gonic/gin"
 	"lxdapi/internal/db"
@@ -26,6 +27,23 @@ import (
 // @Failure 500 {object} response.Response "获取失败"
 // @Security SessionAuth
 // @Router /api/admin/ip [get]
+var ifaceNameRegex = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,14}$`)
+
+func isValidInterfaceName(name string) bool {
+	return ifaceNameRegex.MatchString(name)
+}
+
+func isValidIPByVersion(ipStr, version string) bool {
+	parsed := net.ParseIP(ipStr)
+	if parsed == nil {
+		return false
+	}
+	if version == "v4" {
+		return parsed.To4() != nil
+	}
+	return parsed.To4() == nil
+}
+
 func GetIPList(c *gin.Context) {
 	version := c.DefaultQuery("version", "all")
 	result := gin.H{}
@@ -74,7 +92,7 @@ func AllocateIP(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
 
@@ -99,7 +117,7 @@ func AllocateIP(c *gin.Context) {
 		ips, err := ipv4Svc.AllocateIPv4(ctx, req.Name, container.UserID, req.Count)
 		if err != nil {
 			logger.Error("分配IPv4失败: %v", err)
-			response.Error(c, 500, err.Error())
+			response.Error(c, 500, "分配IPv4失败")
 			return
 		}
 		logger.OK("容器 %s 分配IPv4成功: %v", req.Name, ips)
@@ -117,7 +135,7 @@ func AllocateIP(c *gin.Context) {
 		ips, err := ipv6Svc.AllocateIPv6(ctx, req.Name, container.UserID, req.Count)
 		if err != nil {
 			logger.Error("分配IPv6失败: %v", err)
-			response.Error(c, 500, err.Error())
+			response.Error(c, 500, "分配IPv6失败")
 			return
 		}
 		logger.OK("容器 %s 分配IPv6成功: %v", req.Name, ips)
@@ -155,7 +173,7 @@ func ReleaseIP(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
 
@@ -167,7 +185,7 @@ func ReleaseIP(c *gin.Context) {
 		ipv4Svc := service.NewIPv4Service()
 		if err := ipv4Svc.ReleaseIPv4(req.Name, req.IP); err != nil {
 			logger.Error("释放IPv4失败: %v", err)
-			response.Error(c, 500, err.Error())
+			response.Error(c, 500, "释放IPv4失败")
 			return
 		}
 		logger.OK("容器 %s 释放IPv4成功: %s", req.Name, req.IP)
@@ -180,7 +198,7 @@ func ReleaseIP(c *gin.Context) {
 		ipv6Svc := service.NewIPv6Service()
 		if err := ipv6Svc.ReleaseIPv6(req.Name, req.IP); err != nil {
 			logger.Error("释放IPv6失败: %v", err)
-			response.Error(c, 500, err.Error())
+			response.Error(c, 500, "释放IPv6失败")
 			return
 		}
 		logger.OK("容器 %s 释放IPv6成功: %s", req.Name, req.IP)
@@ -253,11 +271,16 @@ func AddIPToPool(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
 
-	if net.ParseIP(req.IPAddress) == nil {
+	if !isValidInterfaceName(req.Interface) {
+		response.Error(c, 400, "无效的网卡名称")
+		return
+	}
+
+	if !isValidIPByVersion(req.IPAddress, version) {
 		response.Error(c, 400, "无效的IP地址")
 		return
 	}
@@ -332,7 +355,7 @@ func UpdateIPPool(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
 
@@ -389,7 +412,7 @@ func DeleteIPFromPool(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
 
@@ -504,7 +527,12 @@ func BatchAddIPToPool(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
+		return
+	}
+
+	if !isValidInterfaceName(req.Interface) {
+		response.Error(c, 400, "无效的网卡名称")
 		return
 	}
 
@@ -518,7 +546,8 @@ func BatchAddIPToPool(c *gin.Context) {
 		}
 		ips, err = generateIPv4Range(req.StartIP, req.EndIP)
 		if err != nil {
-			response.Error(c, 400, err.Error())
+			logger.Error("生成IPv4范围失败: %v", err)
+			response.Error(c, 400, "IP范围参数无效")
 			return
 		}
 	} else {
@@ -528,7 +557,8 @@ func BatchAddIPToPool(c *gin.Context) {
 		}
 		ips, err = generateIPv6List(req.StartIP, req.Count)
 		if err != nil {
-			response.Error(c, 400, err.Error())
+			logger.Error("生成IPv6列表失败: %v", err)
+			response.Error(c, 400, "IP范围参数无效")
 			return
 		}
 	}

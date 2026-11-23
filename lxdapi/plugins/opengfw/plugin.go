@@ -3,6 +3,7 @@ package opengfw
 import (
 	"fmt"
 	"lxdapi/internal/db"
+	"lxdapi/internal/middleware"
 	"lxdapi/models"
 	"lxdapi/pkg/logger"
 	"lxdapi/pkg/plugin"
@@ -133,9 +134,7 @@ func (p *OpenGFWPlugin) RegisterRoutes(r *gin.Engine) {
 	api := NewAPIHandlerV2(p)
 	
 	adminAPI := r.Group("/api/admin/firewall")
-	adminAPI.Use(func(c *gin.Context) {
-		c.Next()
-	})
+	adminAPI.Use(middleware.AdminAuth())
 	{
 		adminAPI.GET("/config", api.GetConfig)
 		adminAPI.PUT("/config", api.UpdateConfig)

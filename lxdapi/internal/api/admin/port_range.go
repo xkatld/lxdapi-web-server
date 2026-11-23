@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"lxdapi/internal/db"
 	"lxdapi/models"
+	"lxdapi/pkg/logger"
 	"lxdapi/pkg/response"
 )
 
@@ -36,7 +37,7 @@ func SavePortRangeConfig(c *gin.Context) {
 	}
 	
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
 	
@@ -71,7 +72,8 @@ func SavePortRangeConfig(c *gin.Context) {
 			V6AutoAllocate22: req.V6AutoAllocate22,
 		}
 		if err := db.DB.Create(&config).Error; err != nil {
-			response.Error(c, 500, "保存失败: "+err.Error())
+			logger.Error("创建端口范围配置失败: %v", err)
+			response.Error(c, 500, "保存失败")
 			return
 		}
 	} else {
@@ -82,7 +84,8 @@ func SavePortRangeConfig(c *gin.Context) {
 		config.V4AutoAllocate22 = req.V4AutoAllocate22
 		config.V6AutoAllocate22 = req.V6AutoAllocate22
 		if err := db.DB.Save(&config).Error; err != nil {
-			response.Error(c, 500, "保存失败: "+err.Error())
+			logger.Error("保存端口范围配置失败: %v", err)
+			response.Error(c, 500, "保存失败")
 			return
 		}
 	}

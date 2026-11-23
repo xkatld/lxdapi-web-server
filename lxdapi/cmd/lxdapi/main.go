@@ -58,6 +58,8 @@ func main() {
 
 	cfg := core.GlobalConfig
 
+	validateStartupSecrets(cfg)
+
 	logger.Init(cfg.System.Logger.Level, cfg.System.Logger.Colorful)
 	logger.Info("配置加载成功")
 
@@ -263,13 +265,17 @@ func main() {
 
 	gin.SetMode(cfg.System.Server.Mode)
 	r := gin.Default()
+	if err := r.SetTrustedProxies(nil); err != nil {
+		log.Fatalf("配置可信代理失败: %v", err)
+	}
 
 	store := cookie.NewStore([]byte(cfg.Admin.SessionSecret))
 	store.Options(sessions.Options{
 		Path:     "/",
 		MaxAge:   3600,
 		HttpOnly: true,
-		SameSite: 2,
+		Secure:   cfg.System.Server.TLS.Enabled,
+		SameSite: http.SameSiteLaxMode,
 	})
 	r.Use(sessions.Sessions("lxdapi_session", store))
 	r.Use(middleware.BrandMiddleware())
@@ -342,21 +348,19 @@ func main() {
 	r.GET("/", func(c *gin.Context) {
 		sysInfo := sysinfo.GetSystemInfo()
 		response.Success(c, gin.H{
-			"author":       "xkatld",
-			"project":      "https://github.com/xkatld/lxdapi-web-server",
-			"description":  "主流财务系统对接支持，提供完整的Web管理界面与RESTful API",
-			"version":      "v2.1.3",
-			"name":         sysInfo.Name,
-			"docs":         sysInfo.Docs,
-			"os":           sysInfo.OS,
-			"arch":         sysInfo.Arch,
-			"lxd_version":  sysInfo.LXDVersion,
-			"distribution": sysInfo.Distribution,
-			"kernel":       sysInfo.Kernel,
+			"author":      "xkatld",
+			"project":     "https://github.com/xkatld/lxdapi-web-server",
+			"description": "主流财务系统对接支持，提供完整的Web管理界面与RESTful API",
+			"version":     "v2.1.3",
+			"name":        sysInfo.Name,
+			"docs":        sysInfo.Docs,
+			"arch":        sysInfo.Arch,
 		})
 	})
-	
-	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	if cfg.System.Server.Mode != "release" {
+		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	}
 
 	staticFS, err := fs.Sub(embeddedFiles, "static")
 	if err == nil {
@@ -711,6 +715,45 @@ func generateSelfSignedCert(certMgr *tlsManager.CertificateManager) {
 		logger.OK("证书重新生成成功 (有效期10年)")
 	} else {
 		logger.OK("使用现有证书")
+	}
+}
+
+func isPlaceholderOrWeakSecret(val string) bool {
+	trimmed := strings.TrimSpace(val)
+	if trimmed == "" {
+		return true
+	}
+	if strings.HasPrefix(trimmed, "__") && strings.HasSuffix(trimmed, "__") {
+		return true
+	}
+	lower := strings.ToLower(trimmed)
+	weakValues := []string{
+		"changeme",
+		"secret",
+		"password",
+		"admin",
+		"123456",
+		"12345678",
+		"your-secret-key",
+		"replace-me",
+	}
+	for _, weak := range weakValues {
+		if lower == weak {
+			return true
+		}
+	}
+	return false
+}
+
+func validateStartupSecrets(cfg *core.Config) {
+	if isPlaceholderOrWeakSecret(cfg.System.Security.APIHash) || len(strings.TrimSpace(cfg.System.Security.APIHash)) < 16 {
+		log.Fatalf("系统安全配置校验失败: system.security.api_hash 不能为空、占位符且长度不能少于16位")
+	}
+	if isPlaceholderOrWeakSecret(cfg.Admin.Password) || len(strings.TrimSpace(cfg.Admin.Password)) < 8 {
+		log.Fatalf("管理员安全配置校验失败: admin.password 不能为空、占位符且长度不能少于8位")
+	}
+	if isPlaceholderOrWeakSecret(cfg.Admin.SessionSecret) || len(strings.TrimSpace(cfg.Admin.SessionSecret)) < 16 {
+		log.Fatalf("会话安全配置校验失败: admin.session_secret 不能为空、占位符且长度不能少于16位")
 	}
 }
 

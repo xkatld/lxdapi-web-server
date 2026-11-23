@@ -54,7 +54,8 @@ func UpdateBrandSettings(c *gin.Context) {
 	reset := c.Query("reset")
 	if reset == "true" {
 		if err := brandService.ResetToDefault(); err != nil {
-			response.Error(c, 500, "重置失败: "+err.Error())
+			logger.Error("重置品牌设置失败: %v", err)
+			response.Error(c, 500, "重置失败")
 			return
 		}
 		
@@ -66,7 +67,7 @@ func UpdateBrandSettings(c *gin.Context) {
 	var req models.BrandSettings
 	
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
 	
@@ -122,7 +123,8 @@ func UpdateBrandSettings(c *gin.Context) {
 	}
 
 	if err := brandService.UpdateSettings(&req); err != nil {
-		response.Error(c, 500, "更新品牌设置失败: "+err.Error())
+		logger.Error("更新品牌设置失败: %v", err)
+		response.Error(c, 500, "更新品牌设置失败")
 		return
 	}
 	

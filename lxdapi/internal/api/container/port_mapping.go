@@ -35,6 +35,7 @@ func AllocatePortMapping(c *gin.Context) {
 		PublicPort    int    `json:"public_port"`
 		ContainerPort int    `json:"container_port" binding:"required"`
 		PortCount     int    `json:"port_count"`
+		Protocol      string `json:"protocol"`
 		Description   string `json:"description"`
 	}
 
@@ -50,8 +51,24 @@ func AllocatePortMapping(c *gin.Context) {
 	}
 	containerName := containerNameVal.(string)
 
-	if req.PortCount <= 0 {
-		req.PortCount = 1
+	if req.Protocol != "" {
+		if err := service.ValidatePortMappingProtocol(req.Protocol); err != nil {
+			response.Error(c, 400, err.Error())
+			return
+		}
+	}
+
+	portCount, err := service.NormalizeAndValidatePortCount(req.PortCount)
+	if err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
+	req.PortCount = portCount
+
+	containerPortEnd, err := service.ValidatePortRange(req.ContainerPort, req.PortCount, "容器端口")
+	if err != nil {
+		response.Error(c, 400, err.Error())
+		return
 	}
 
 	var portRangeConfig models.PortRangeConfig
@@ -92,13 +109,12 @@ func AllocatePortMapping(c *gin.Context) {
 	}
 
 	publicPortEnd := req.PublicPort + req.PortCount - 1
-	containerPortEnd := req.ContainerPort + req.PortCount - 1
 
 	ctx := context.Background()
 
 	if version == "v4" {
-		if req.PublicPort < portRangeConfig.V4PortStart || req.PublicPort > portRangeConfig.V4PortEnd {
-			response.Error(c, 400, fmt.Sprintf("公网端口必须在 %d-%d 范围内", portRangeConfig.V4PortStart, portRangeConfig.V4PortEnd))
+		if _, err := service.ValidatePublicPortRange(req.PublicPort, req.PortCount, portRangeConfig.V4PortStart, portRangeConfig.V4PortEnd); err != nil {
+			response.Error(c, 400, err.Error())
 			return
 		}
 
@@ -182,8 +198,8 @@ func AllocatePortMapping(c *gin.Context) {
 		response.Success(c, result)
 
 	} else {
-		if req.PublicPort < portRangeConfig.V6PortStart || req.PublicPort > portRangeConfig.V6PortEnd {
-			response.Error(c, 400, fmt.Sprintf("公网端口必须在 %d-%d 范围内", portRangeConfig.V6PortStart, portRangeConfig.V6PortEnd))
+		if _, err := service.ValidatePublicPortRange(req.PublicPort, req.PortCount, portRangeConfig.V6PortStart, portRangeConfig.V6PortEnd); err != nil {
+			response.Error(c, 400, err.Error())
 			return
 		}
 

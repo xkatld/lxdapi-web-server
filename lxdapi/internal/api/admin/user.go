@@ -45,7 +45,7 @@ type CreateUserRequest struct {
 func CreateUser(c *gin.Context) {
 	var req CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
 
@@ -56,7 +56,7 @@ func CreateUser(c *gin.Context) {
 		req.AllowNesting, req.MemorySwap)
 	if err != nil {
 		logger.Error("创建用户失败: %v", err)
-		response.Error(c, 500, err.Error())
+		response.Error(c, 500, "创建用户失败")
 		return
 	}
 
@@ -86,7 +86,7 @@ func GetUsers(c *gin.Context) {
 		user, containers, err := service.GetUserWithContainers(userID)
 		if err != nil {
 			logger.Error("获取用户失败: %v", err)
-			response.Error(c, 404, err.Error())
+			response.Error(c, 404, "用户不存在")
 			return
 		}
 		
@@ -104,7 +104,7 @@ func GetUsers(c *gin.Context) {
 	users, err := service.ListUsers()
 	if err != nil {
 		logger.Error("获取用户列表失败: %v", err)
-		response.Error(c, 500, err.Error())
+		response.Error(c, 500, "获取用户列表失败")
 		return
 	}
 
@@ -178,7 +178,7 @@ func UpdateUser(c *gin.Context) {
 
 	var req UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
 
@@ -248,7 +248,7 @@ func UpdateUser(c *gin.Context) {
 
 	if err := service.UpdateUser(userID, updates); err != nil {
 		logger.Error("更新用户失败: %v", err)
-		response.Error(c, 500, err.Error())
+		response.Error(c, 500, "更新用户失败")
 		return
 	}
 
@@ -280,7 +280,7 @@ func DeleteUser(c *gin.Context) {
 
 	if err := service.DeleteUser(userID); err != nil {
 		logger.Error("删除用户失败: %v", err)
-		response.Error(c, 500, err.Error())
+		response.Error(c, 500, "删除用户失败")
 		return
 	}
 
@@ -340,7 +340,7 @@ func RegenerateAPIKey(c *gin.Context) {
 	user, err := service.RegenerateAPIKey(userID, "")
 	if err != nil {
 		logger.Error("重新生成密码失败: %v", err)
-		response.Error(c, 500, err.Error())
+		response.Error(c, 500, "重新生成密码失败")
 		return
 	}
 

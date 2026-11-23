@@ -29,7 +29,7 @@ func ListContainers(c *gin.Context) {
 	containers, err := service.ListContainersByUser(userID)
 	if err != nil {
 		logger.Error("获取容器列表失败: %v", err)
-		response.Error(c, 500, err.Error())
+		response.Error(c, 500, "获取容器列表失败")
 		return
 	}
 
@@ -68,7 +68,8 @@ func GetContainer(c *gin.Context) {
 	ctx := c.Request.Context()
 	info, err := svc.GetInfo(ctx, name)
 	if err != nil {
-		response.Error(c, 500, "获取容器信息失败: "+err.Error())
+		logger.Error("获取容器信息失败: %v", err)
+		response.Error(c, 500, "获取容器信息失败")
 		return
 	}
 
@@ -111,7 +112,8 @@ func DeleteContainer(c *gin.Context) {
 		return svc.Delete(ctx, name)
 	})
 	if err != nil {
-		response.Error(c, 500, "创建任务失败: "+err.Error())
+		logger.Error("创建删除容器任务失败: %v", err)
+		response.Error(c, 500, "创建任务失败")
 		return
 	}
 
@@ -164,7 +166,8 @@ func ContainerAction(c *gin.Context) {
 		if err := executor.CreateSyncTask(name, "start", userID, func(ctx context.Context) error {
 			return svc.Start(ctx, name)
 		}); err != nil {
-			response.Error(c, 500, err.Error())
+			logger.Error("容器启动失败: %v", err)
+			response.Error(c, 500, "容器启动失败")
 			return
 		}
 		logger.OK("容器启动成功: %s", name)
@@ -174,7 +177,8 @@ func ContainerAction(c *gin.Context) {
 		if err := executor.CreateSyncTask(name, "stop", userID, func(ctx context.Context) error {
 			return svc.Stop(ctx, name)
 		}); err != nil {
-			response.Error(c, 500, err.Error())
+			logger.Error("容器停止失败: %v", err)
+			response.Error(c, 500, "容器停止失败")
 			return
 		}
 		logger.OK("容器停止成功: %s", name)
@@ -184,7 +188,8 @@ func ContainerAction(c *gin.Context) {
 		if err := executor.CreateSyncTask(name, "restart", userID, func(ctx context.Context) error {
 			return svc.Restart(ctx, name)
 		}); err != nil {
-			response.Error(c, 500, err.Error())
+			logger.Error("容器重启失败: %v", err)
+			response.Error(c, 500, "容器重启失败")
 			return
 		}
 		logger.OK("容器重启成功: %s", name)
@@ -194,7 +199,8 @@ func ContainerAction(c *gin.Context) {
 		if err := executor.CreateSyncTask(name, "pause", userID, func(ctx context.Context) error {
 			return svc.PauseWithSource(ctx, name, "admin")
 		}); err != nil {
-			response.Error(c, 500, err.Error())
+			logger.Error("容器暂停失败: %v", err)
+			response.Error(c, 500, "容器暂停失败")
 			return
 		}
 		logger.OK("容器暂停成功: %s", name)
@@ -204,7 +210,8 @@ func ContainerAction(c *gin.Context) {
 		if err := executor.CreateSyncTask(name, "resume", userID, func(ctx context.Context) error {
 			return svc.Resume(ctx, name)
 		}); err != nil {
-			response.Error(c, 500, err.Error())
+			logger.Error("容器恢复失败: %v", err)
+			response.Error(c, 500, "容器恢复失败")
 			return
 		}
 		logger.OK("容器恢复成功: %s", name)
@@ -236,7 +243,8 @@ func ContainerAction(c *gin.Context) {
 			return svc.Reinstall(ctx, name, req.Image, req.Password)
 		})
 		if err != nil {
-			response.Error(c, 500, "创建任务失败: "+err.Error())
+			logger.Error("创建重装任务失败: %v", err)
+			response.Error(c, 500, "创建任务失败")
 			return
 		}
 		logger.OK("容器重装任务已创建: %s, 任务ID: %d", name, task.ID)
@@ -257,7 +265,8 @@ func ContainerAction(c *gin.Context) {
 		if err := executor.CreateSyncTask(name, "reset_password", userID, func(ctx context.Context) error {
 			return svc.ResetPassword(ctx, name, req.Password)
 		}); err != nil {
-			response.Error(c, 500, err.Error())
+			logger.Error("容器密码重置失败: %v", err)
+			response.Error(c, 500, "容器密码重置失败")
 			return
 		}
 		logger.OK("容器密码重置成功: %s", name)
@@ -269,7 +278,8 @@ func ContainerAction(c *gin.Context) {
 			return
 		}
 		if err := traffic.GlobalMonitor.ResetTraffic(name); err != nil {
-			response.Error(c, 500, err.Error())
+			logger.Error("重置容器流量失败: %v", err)
+			response.Error(c, 500, "重置容器流量失败")
 			return
 		}
 		logger.OK("容器流量已重置: %s", name)
@@ -304,7 +314,7 @@ func GetContainerCredential(c *gin.Context) {
 		cred, err = service.CreateContainerCredential(name)
 		if err != nil {
 			logger.Error("创建容器凭证失败: %v", err)
-			response.Error(c, 500, err.Error())
+			response.Error(c, 500, "创建容器凭证失败")
 			return
 		}
 	}
@@ -337,7 +347,7 @@ func RegenerateContainerCredential(c *gin.Context) {
 	cred, err := service.RegenerateContainerHash(name)
 	if err != nil {
 		logger.Error("重新生成容器Hash失败: %v", err)
-		response.Error(c, 500, err.Error())
+		response.Error(c, 500, "重新生成容器凭证失败")
 		return
 	}
 
@@ -370,7 +380,8 @@ func GetContainerConfig(c *gin.Context) {
 	svc := service.NewContainerService()
 	config, err := svc.GetConfig(name)
 	if err != nil {
-		response.Error(c, 404, err.Error())
+		logger.Error("获取容器配置失败: %v", err)
+		response.Error(c, 404, "获取容器配置失败")
 		return
 	}
 
@@ -407,7 +418,7 @@ func UpdateContainerConfig(c *gin.Context) {
 
 	var req models.UpdateContainerConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
 
@@ -422,7 +433,8 @@ func UpdateContainerConfig(c *gin.Context) {
 		return err
 	})
 	if err != nil {
-		response.Error(c, 500, "创建任务失败: "+err.Error())
+		logger.Error("创建删除容器任务失败: %v", err)
+		response.Error(c, 500, "创建任务失败")
 		return
 	}
 
@@ -523,7 +535,7 @@ func AllocateContainerIP(c *gin.Context) {
 		ips, err := ipv4Svc.AllocateIPv4(ctx, name, container.UserID, req.Count)
 		if err != nil {
 			logger.Error("分配IPv4失败: %v", err)
-			response.Error(c, 500, err.Error())
+			response.Error(c, 500, "分配IPv4失败")
 			return
 		}
 		logger.OK("容器 %s 分配IPv4成功: %v", name, ips)
@@ -537,7 +549,7 @@ func AllocateContainerIP(c *gin.Context) {
 		ips, err := ipv6Svc.AllocateIPv6(ctx, name, container.UserID, req.Count)
 		if err != nil {
 			logger.Error("分配IPv6失败: %v", err)
-			response.Error(c, 500, err.Error())
+			response.Error(c, 500, "分配IPv6失败")
 			return
 		}
 		logger.OK("容器 %s 分配IPv6成功: %v", name, ips)
@@ -556,7 +568,8 @@ func GetContainerDNS(c *gin.Context) {
 	lxcClient := service.NewContainerService().GetLXCClient()
 	dnsServers, err := lxcClient.GetContainerDNS(ctx, name)
 	if err != nil {
-		response.Error(c, 500, err.Error())
+		logger.Error("获取容器DNS失败: %v", err)
+		response.Error(c, 500, "获取容器DNS失败")
 		return
 	}
 	
@@ -586,7 +599,8 @@ func SetContainerDNS(c *gin.Context) {
 	lxcClient := service.NewContainerService().GetLXCClient()
 	
 	if err := lxcClient.SetContainerDNS(ctx, name, req.DNS); err != nil {
-		response.Error(c, 500, err.Error())
+		logger.Error("设置容器DNS失败: %v", err)
+		response.Error(c, 500, "设置容器DNS失败")
 		return
 	}
 	

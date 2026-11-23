@@ -162,9 +162,10 @@ func Action(c *gin.Context) {
 		}
 		c.ShouldBindJSON(&req)
 
-		finalImage := req.Image
-		if finalImage == "" {
-			finalImage = dbContainer.Image
+		finalImage, code, msg := service.ResolveReinstallTemplateAccess(req.Image, dbContainer.Image, userID)
+		if code != 0 {
+			response.Error(c, code, msg)
+			return
 		}
 
 		params := map[string]interface{}{
@@ -178,7 +179,7 @@ func Action(c *gin.Context) {
 		}
 
 		task, err := executor.CreateTask(name, "reinstall", userID, params, func(ctx context.Context) error {
-			return containerService.Reinstall(ctx, name, req.Image, req.Password)
+			return containerService.Reinstall(ctx, name, finalImage, req.Password)
 		})
 		if err != nil {
 			response.Error(c, 500, "创建任务失败: "+err.Error())

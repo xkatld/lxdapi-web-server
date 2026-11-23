@@ -26,11 +26,11 @@ type Manager struct {
 	certDir string
 }
 
-func NewManager(certDir string) (*Manager, error) {
-	if strings.TrimSpace(certDir) == "" {
-		certDir = "certs/acme"
+func NewManager(cert_dir string) (*Manager, error) {
+	if strings.TrimSpace(cert_dir) == "" {
+		cert_dir = "certs/acme"
 	}
-	abs_dir, err := filepath.Abs(certDir)
+	abs_dir, err := filepath.Abs(cert_dir)
 	if err != nil {
 		return nil, fmt.Errorf("解析证书目录失败: %w", err)
 	}
@@ -97,11 +97,8 @@ func (m *Manager) Install(email string) error {
 		return err
 	}
 
-	cmd := exec.Command("sh", "-c", `curl -fsSL https://get.acme.sh | sh -s "email=$ACME_EMAIL"`)
-	cmd.Env = append(os.Environ(), "ACME_EMAIL="+install_email)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("安装 acme.sh 失败: %v, 输出: %s", err, strings.TrimSpace(string(output)))
+	if err := m.download_and_run_installer(install_email); err != nil {
+		return err
 	}
 	bin := m.acme_bin()
 	if bin == "" {
@@ -270,8 +267,8 @@ func (m *Manager) run_acme_cert(action_label, bin, target string, args []string)
 	return m.install_cert_to_disk(bin, target)
 }
 
-func (m *Manager) Issue(serverIP, email, webroot string) error {
-	bin, target, root_dir, err := m.prepare_execution(serverIP, email, webroot)
+func (m *Manager) Issue(server_ip, email, webroot string) error {
+	bin, target, root_dir, err := m.prepare_execution(server_ip, email, webroot)
 	if err != nil {
 		return err
 	}
@@ -287,8 +284,8 @@ func (m *Manager) Issue(serverIP, email, webroot string) error {
 	return m.run_acme_cert("签发证书", bin, target, args)
 }
 
-func (m *Manager) Renew(serverIP, email, webroot string) error {
-	bin, target, root_dir, err := m.prepare_execution(serverIP, email, webroot)
+func (m *Manager) Renew(server_ip, email, webroot string) error {
+	bin, target, root_dir, err := m.prepare_execution(server_ip, email, webroot)
 	if err != nil {
 		return err
 	}
@@ -298,4 +295,54 @@ func (m *Manager) Renew(serverIP, email, webroot string) error {
 		"-w", root_dir,
 	}
 	return m.run_acme_cert("续签证书", bin, target, args)
+}
+
+func (m *Manager) download_and_run_installer(install_email string) error {
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	resp, err := client.Get("https://get.acme.sh")
+	if err != nil {
+		return fmt.Errorf("下载 acme.sh 安装脚本失败: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("下载 acme.sh 安装脚本返回异常状态码: %d", resp.StatusCode)
+	}
+
+	script_bytes, err := io.ReadAll(io.LimitReader(resp.Body, 2*1024*1024))
+	if err != nil {
+		return fmt.Errorf("读取 acme.sh 安装脚本失败: %w", err)
+	}
+	script_str := string(script_bytes)
+	if len(script_bytes) == 0 || !strings.Contains(script_str, "acme.sh") || (!strings.HasPrefix(script_str, "#!/bin/sh") && !strings.HasPrefix(script_str, "#!/usr/bin/env sh")) {
+		return fmt.Errorf("下载的 acme.sh 安装脚本校验未通过")
+	}
+
+	tmp_file, err := os.CreateTemp("", "acme-install-*.sh")
+	if err != nil {
+		return fmt.Errorf("创建临时安装脚本失败: %w", err)
+	}
+	tmp_path := tmp_file.Name()
+	defer os.Remove(tmp_path)
+
+	if _, err := tmp_file.Write(script_bytes); err != nil {
+		tmp_file.Close()
+		return fmt.Errorf("写入临时安装脚本失败: %w", err)
+	}
+	if err := tmp_file.Chmod(0700); err != nil {
+		tmp_file.Close()
+		return fmt.Errorf("设置临时安装脚本权限失败: %w", err)
+	}
+	if err := tmp_file.Close(); err != nil {
+		return fmt.Errorf("关闭临时安装脚本失败: %w", err)
+	}
+
+	cmd := exec.Command("sh", tmp_path, "-s", "email="+install_email)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("安装 acme.sh 失败: %v, 输出: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"lxdapi/models"
 	"lxdapi/pkg/logger"
 	"lxdapi/pkg/response"
+	"net"
 	"regexp"
 	"strconv"
 	"strings"
@@ -19,6 +20,38 @@ import (
 
 type APIHandler struct {
 	plugin *NginxPlugin
+}
+
+type userCreateProxyRequest struct {
+	ContainerName string `json:"container_name"`
+	Protocol      string `json:"protocol"`
+	Domain        string `json:"domain"`
+	TargetPort    int    `json:"target_port"`
+	EnableSSL     bool   `json:"enable_ssl"`
+	SSLCert       string `json:"ssl_cert"`
+	SSLKey        string `json:"ssl_key"`
+	Description   string `json:"description"`
+}
+
+type containerCreateProxyRequest struct {
+	Protocol    string `json:"protocol"`
+	Domain      string `json:"domain"`
+	TargetPort  int    `json:"target_port"`
+	EnableSSL   bool   `json:"enable_ssl"`
+	SSLCert     string `json:"ssl_cert"`
+	SSLKey      string `json:"ssl_key"`
+	Description string `json:"description"`
+}
+
+type proxyUpdateRequest struct {
+	Protocol    string `json:"protocol"`
+	Domain      string `json:"domain"`
+	TargetPort  int    `json:"target_port"`
+	EnableSSL   bool   `json:"enable_ssl"`
+	SSLCert     string `json:"ssl_cert"`
+	SSLKey      string `json:"ssl_key"`
+	Description string `json:"description"`
+	Status      string `json:"status"`
 }
 
 func NewAPIHandler(plugin *NginxPlugin) *APIHandler {
@@ -55,8 +88,8 @@ func validateDomain(domain string) error {
 		return fmt.Errorf("域名长度不能超过253个字符")
 	}
 
-	if strings.Contains(domain, " ") {
-		return fmt.Errorf("域名不能包含空格")
+	if strings.Contains(domain, "..") || strings.ContainsAny(domain, " \t\r\n/\\;:{}") {
+		return fmt.Errorf("域名包含非法字符")
 	}
 
 	domainRegex := regexp.MustCompile(`\A(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\z`)
@@ -75,6 +108,34 @@ func validateDomain(domain string) error {
 	}
 
 	return nil
+}
+
+func validateTargetIP(targetIP string) error {
+	if targetIP == "" {
+		return fmt.Errorf("目标IP不能为空")
+	}
+	if strings.ContainsAny(targetIP, " \t\r\n;{}") {
+		return fmt.Errorf("目标IP包含非法字符")
+	}
+	if net.ParseIP(targetIP) == nil {
+		return fmt.Errorf("无效的目标IP地址")
+	}
+	return nil
+}
+
+func validateTargetPort(port int) error {
+	if port < 1 || port > 65535 {
+		return fmt.Errorf("目标端口必须在1至65535之间")
+	}
+	return nil
+}
+
+func parseProxyID(idStr string) (uint64, error) {
+	id, err := strconv.ParseUint(strings.TrimSpace(idStr), 10, 64)
+	if err != nil || id == 0 {
+		return 0, fmt.Errorf("无效的规则ID")
+	}
+	return id, nil
 }
 
 func (h *APIHandler) GetConfig(c *gin.Context) {
@@ -274,6 +335,7 @@ func (h *APIHandler) CreateProxy(c *gin.Context) {
 		return
 	}
 
+	req.Domain = strings.TrimSpace(req.Domain)
 	if req.ContainerName == "" || req.Domain == "" || req.Protocol == "" {
 		response.Error(c, 400, "容器名称、域名和协议不能为空")
 		return
@@ -294,6 +356,11 @@ func (h *APIHandler) CreateProxy(c *gin.Context) {
 		response.Error(c, 400, "协议只能是http或https")
 		return
 	}
+
+	if err := validateTargetPort(req.TargetPort); err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
 	
 	if req.Protocol == "http" && req.PublicPort != 80 {
 		req.PublicPort = 80
@@ -312,6 +379,11 @@ func (h *APIHandler) CreateProxy(c *gin.Context) {
 	if targetIP == "" {
 		targetIP = container.PrivateIP
 	}
+	if err := validateTargetIP(targetIP); err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
+	req.TargetIP = targetIP
 	if err := h.checkRestrictions(req.Domain, targetIP); err != nil {
 		response.Error(c, 400, err.Error())
 		return
@@ -323,10 +395,10 @@ func (h *APIHandler) CreateProxy(c *gin.Context) {
 		return
 	}
 	
-	var usedCount int64
-	db.DB.Model(&models.ReverseProxy{}).Where("container_name = ? AND status = ?", req.ContainerName, "active").Count(&usedCount)
-	if container.ReverseProxyLimit > 0 && usedCount >= int64(container.ReverseProxyLimit) {
-		response.Error(c, 400, fmt.Sprintf("反向代理配额已用完 (%d/%d)", usedCount, container.ReverseProxyLimit))
+	var used_count int64
+	db.DB.Model(&models.ReverseProxy{}).Where("container_name = ? AND status = ?", req.ContainerName, "active").Count(&used_count)
+	if container.ReverseProxyLimit <= 0 || used_count >= int64(container.ReverseProxyLimit) {
+		response.Error(c, 400, fmt.Sprintf("反向代理配额已用完 (%d/%d)", used_count, container.ReverseProxyLimit))
 		return
 	}
 	
@@ -357,10 +429,14 @@ func (h *APIHandler) CreateProxy(c *gin.Context) {
 }
 
 func (h *APIHandler) UpdateProxy(c *gin.Context) {
-	id := c.Param("id")
+	id, err := parseProxyID(c.Param("id"))
+	if err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
 
 	var proxy models.ReverseProxy
-	if err := db.DB.First(&proxy, id).Error; err != nil {
+	if err := db.DB.Where("id = ?", id).First(&proxy).Error; err != nil {
 		response.Error(c, 404, "规则不存在")
 		return
 	}
@@ -371,6 +447,7 @@ func (h *APIHandler) UpdateProxy(c *gin.Context) {
 		return
 	}
 
+	req.Domain = strings.TrimSpace(req.Domain)
 	if req.SSLCert != "" || req.SSLKey != "" {
 		if err := validateSSL(req.SSLCert, req.SSLKey); err != nil {
 			response.Error(c, 400, err.Error())
@@ -381,10 +458,30 @@ func (h *APIHandler) UpdateProxy(c *gin.Context) {
 		response.Error(c, 400, err.Error())
 		return
 	}
+	if req.Protocol != "http" && req.Protocol != "https" {
+		response.Error(c, 400, "协议只能是http或https")
+		return
+	}
+	if err := validateTargetPort(req.TargetPort); err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
+	targetIP := req.TargetIP
+	if targetIP == "" {
+		targetIP = proxy.TargetIP
+	}
+	if err := validateTargetIP(targetIP); err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
+	if err := h.checkRestrictions(req.Domain, targetIP); err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
 
 	proxy.Domain = req.Domain
 	proxy.Protocol = req.Protocol
-	proxy.TargetIP = req.TargetIP
+	proxy.TargetIP = targetIP
 	proxy.TargetPort = req.TargetPort
 	proxy.EnableSSL = req.EnableSSL
 	proxy.SSLCert = req.SSLCert
@@ -412,9 +509,13 @@ func (h *APIHandler) UpdateProxy(c *gin.Context) {
 }
 
 func (h *APIHandler) DeleteProxy(c *gin.Context) {
-	id := c.Param("id")
+	id, err := parseProxyID(c.Param("id"))
+	if err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
 	
-	if err := db.DB.Unscoped().Delete(&models.ReverseProxy{}, id).Error; err != nil {
+	if err := db.DB.Unscoped().Where("id = ?", id).Delete(&models.ReverseProxy{}).Error; err != nil {
 		response.Error(c, 500, "删除失败")
 		return
 	}
@@ -428,7 +529,7 @@ func (h *APIHandler) DeleteProxy(c *gin.Context) {
 
 func (h *APIHandler) BatchDeleteProxies(c *gin.Context) {
 	var req struct {
-		IDs []int `json:"ids" binding:"required"`
+		IDs []uint `json:"ids" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, 400, "参数错误")
@@ -440,7 +541,14 @@ func (h *APIHandler) BatchDeleteProxies(c *gin.Context) {
 		return
 	}
 
-	result := db.DB.Unscoped().Delete(&models.ReverseProxy{}, req.IDs)
+	for _, id := range req.IDs {
+		if id == 0 {
+			response.Error(c, 400, "包含无效的规则ID")
+			return
+		}
+	}
+
+	result := db.DB.Unscoped().Where("id IN ?", req.IDs).Delete(&models.ReverseProxy{})
 	deleted := int(result.RowsAffected)
 
 	if h.plugin.config.Enabled {
@@ -497,7 +605,7 @@ func (h *APIHandler) CreateUserProxy(c *gin.Context) {
 		return
 	}
 	
-	var req models.ReverseProxy
+	var req userCreateProxyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, 400, "参数错误")
 		return
@@ -514,15 +622,29 @@ func (h *APIHandler) CreateUserProxy(c *gin.Context) {
 		return
 	}
 	
-	h.createProxyInternal(c, req, container)
+	proxy := models.ReverseProxy{
+		ContainerName: req.ContainerName,
+		Protocol:      req.Protocol,
+		Domain:        strings.TrimSpace(req.Domain),
+		TargetPort:    req.TargetPort,
+		EnableSSL:     req.EnableSSL,
+		SSLCert:       req.SSLCert,
+		SSLKey:        req.SSLKey,
+		Description:   req.Description,
+	}
+	h.createProxyInternal(c, proxy, container)
 }
 
 func (h *APIHandler) UpdateUserProxy(c *gin.Context) {
 	username := c.GetString("username")
-	id, _ := strconv.Atoi(c.Param("id"))
+	id, err := parseProxyID(c.Param("id"))
+	if err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
 	
 	var proxy models.ReverseProxy
-	if err := db.DB.First(&proxy, id).Error; err != nil {
+	if err := db.DB.Where("id = ?", id).First(&proxy).Error; err != nil {
 		response.Error(c, 404, "规则不存在")
 		return
 	}
@@ -538,15 +660,19 @@ func (h *APIHandler) UpdateUserProxy(c *gin.Context) {
 		return
 	}
 	
-	h.UpdateProxy(c)
+	h.updateProxyInternal(c, &proxy, &container)
 }
 
 func (h *APIHandler) DeleteUserProxy(c *gin.Context) {
 	username := c.GetString("username")
-	id, _ := strconv.Atoi(c.Param("id"))
+	id, err := parseProxyID(c.Param("id"))
+	if err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
 	
 	var proxy models.ReverseProxy
-	if err := db.DB.First(&proxy, id).Error; err != nil {
+	if err := db.DB.Where("id = ?", id).First(&proxy).Error; err != nil {
 		response.Error(c, 404, "规则不存在")
 		return
 	}
@@ -582,22 +708,20 @@ func (h *APIHandler) GetContainerProxiesAPI(c *gin.Context) {
 }
 
 func (h *APIHandler) CreateContainerProxy(c *gin.Context) {
-	containerName := c.GetString("container_name")
-	if containerName == "" {
+	container_name := c.GetString("container_name")
+	if container_name == "" {
 		response.Error(c, 401, "未授权")
 		return
 	}
 	
-	var req models.ReverseProxy
+	var req containerCreateProxyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, 400, "参数错误")
 		return
 	}
 	
-	req.ContainerName = containerName
-	
 	var container models.Container
-	if err := db.DB.Where("name = ?", containerName).First(&container).Error; err != nil {
+	if err := db.DB.Where("name = ?", container_name).First(&container).Error; err != nil {
 		response.Error(c, 404, "容器不存在")
 		return
 	}
@@ -607,15 +731,29 @@ func (h *APIHandler) CreateContainerProxy(c *gin.Context) {
 		return
 	}
 	
-	h.createProxyInternal(c, req, container)
+	proxy := models.ReverseProxy{
+		ContainerName: container_name,
+		Protocol:      req.Protocol,
+		Domain:        strings.TrimSpace(req.Domain),
+		TargetPort:    req.TargetPort,
+		EnableSSL:     req.EnableSSL,
+		SSLCert:       req.SSLCert,
+		SSLKey:        req.SSLKey,
+		Description:   req.Description,
+	}
+	h.createProxyInternal(c, proxy, container)
 }
 
 func (h *APIHandler) UpdateContainerProxy(c *gin.Context) {
 	containerName := c.GetString("container_name")
-	id, _ := strconv.Atoi(c.Param("id"))
+	id, err := parseProxyID(c.Param("id"))
+	if err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
 	
 	var proxy models.ReverseProxy
-	if err := db.DB.First(&proxy, id).Error; err != nil {
+	if err := db.DB.Where("id = ?", id).First(&proxy).Error; err != nil {
 		response.Error(c, 404, "规则不存在")
 		return
 	}
@@ -625,20 +763,30 @@ func (h *APIHandler) UpdateContainerProxy(c *gin.Context) {
 		return
 	}
 
-	if deny_code, deny_msg := service.CheckContainerOperationByName(proxy.ContainerName, false, "update_proxy"); deny_code != 0 {
+	var container models.Container
+	if err := db.DB.Where("name = ?", containerName).First(&container).Error; err != nil {
+		response.Error(c, 404, "容器不存在")
+		return
+	}
+
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(&container, false, "update_proxy"); deny_code != 0 {
 		response.Error(c, deny_code, deny_msg)
 		return
 	}
 	
-	h.UpdateProxy(c)
+	h.updateProxyInternal(c, &proxy, &container)
 }
 
 func (h *APIHandler) DeleteContainerProxy(c *gin.Context) {
 	containerName := c.GetString("container_name")
-	id, _ := strconv.Atoi(c.Param("id"))
+	id, err := parseProxyID(c.Param("id"))
+	if err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
 	
 	var proxy models.ReverseProxy
-	if err := db.DB.First(&proxy, id).Error; err != nil {
+	if err := db.DB.Where("id = ?", id).First(&proxy).Error; err != nil {
 		response.Error(c, 404, "规则不存在")
 		return
 	}
@@ -657,6 +805,7 @@ func (h *APIHandler) DeleteContainerProxy(c *gin.Context) {
 }
 
 func (h *APIHandler) createProxyInternal(c *gin.Context, req models.ReverseProxy, container models.Container) {
+	req.Domain = strings.TrimSpace(req.Domain)
 	if req.Domain == "" || req.Protocol == "" {
 		response.Error(c, 400, "域名和协议不能为空")
 		return
@@ -677,6 +826,11 @@ func (h *APIHandler) createProxyInternal(c *gin.Context, req models.ReverseProxy
 		response.Error(c, 400, "协议只能是http或https")
 		return
 	}
+
+	if err := validateTargetPort(req.TargetPort); err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
 	
 	if req.Protocol == "http" {
 		req.PublicPort = 80
@@ -685,34 +839,34 @@ func (h *APIHandler) createProxyInternal(c *gin.Context, req models.ReverseProxy
 		req.EnableSSL = true
 	}
 
-	targetIP := req.TargetIP
-	if targetIP == "" {
-		targetIP = container.PrivateIP
+	if container.PrivateIP == "" {
+		response.Error(c, 400, "容器内网IP为空，无法创建反向代理")
+		return
 	}
-	if err := h.checkRestrictions(req.Domain, targetIP); err != nil {
+	req.TargetIP = container.PrivateIP
+	if err := validateTargetIP(req.TargetIP); err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
+	if err := h.checkRestrictions(req.Domain, req.TargetIP); err != nil {
 		response.Error(c, 400, err.Error())
 		return
 	}
 	
-	var existingProxy models.ReverseProxy
-	if err := db.DB.Where("domain = ?", req.Domain).First(&existingProxy).Error; err == nil {
+	var existing_proxy models.ReverseProxy
+	if err := db.DB.Where("domain = ?", req.Domain).First(&existing_proxy).Error; err == nil {
 		response.Error(c, 400, "域名已被使用")
 		return
 	}
 	
-	var usedCount int64
-	db.DB.Model(&models.ReverseProxy{}).Where("container_name = ? AND status = ?", req.ContainerName, "active").Count(&usedCount)
-	if container.ReverseProxyLimit > 0 && usedCount >= int64(container.ReverseProxyLimit) {
-		response.Error(c, 400, fmt.Sprintf("反向代理配额已用完 (%d/%d)", usedCount, container.ReverseProxyLimit))
+	var used_count int64
+	db.DB.Model(&models.ReverseProxy{}).Where("container_name = ? AND status = ?", req.ContainerName, "active").Count(&used_count)
+	if container.ReverseProxyLimit <= 0 || used_count >= int64(container.ReverseProxyLimit) {
+		response.Error(c, 400, fmt.Sprintf("反向代理配额已用完 (%d/%d)", used_count, container.ReverseProxyLimit))
 		return
 	}
 	
-	if req.TargetIP == "" {
-		req.TargetIP = container.PrivateIP
-	}
-	if req.Status == "" {
-		req.Status = "active"
-	}
+	req.Status = "active"
 	
 	if err := db.DB.Create(&req).Error; err != nil {
 		response.Error(c, 500, "创建失败")
@@ -722,12 +876,115 @@ func (h *APIHandler) createProxyInternal(c *gin.Context, req models.ReverseProxy
 	if h.plugin.config.Enabled {
 		if err := h.plugin.ApplyConfig(); err != nil {
 			logger.Error("应用Nginx配置失败: %v", err)
-			response.Error(c, 500, fmt.Sprintf("规则已创建但应用配置失败: %v", err))
+			response.Error(c, 500, "规则已创建但应用配置失败")
 			return
 		}
 	}
 	
 	response.Success(c, req)
+}
+
+func (h *APIHandler) updateProxyInternal(c *gin.Context, proxy *models.ReverseProxy, container *models.Container) {
+	var req proxyUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, 400, "参数错误")
+		return
+	}
+
+	req.Domain = strings.TrimSpace(req.Domain)
+	if req.SSLCert != "" || req.SSLKey != "" {
+		if err := validateSSL(req.SSLCert, req.SSLKey); err != nil {
+			response.Error(c, 400, err.Error())
+			return
+		}
+	}
+	if err := validateDomain(req.Domain); err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
+	if req.Protocol != "http" && req.Protocol != "https" {
+		response.Error(c, 400, "协议只能是http或https")
+		return
+	}
+	if err := validateTargetPort(req.TargetPort); err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
+	if req.Status != "" && req.Status != "active" && req.Status != "disabled" {
+		response.Error(c, 400, "状态只能是active或disabled")
+		return
+	}
+	if container.PrivateIP == "" {
+		response.Error(c, 400, "容器内网IP为空，无法更新反向代理")
+		return
+	}
+	locked_target_ip := container.PrivateIP
+	if err := validateTargetIP(locked_target_ip); err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
+	if err := h.checkRestrictions(req.Domain, locked_target_ip); err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
+
+	var existing_proxy models.ReverseProxy
+	if err := db.DB.Where("domain = ? AND id != ?", req.Domain, proxy.ID).First(&existing_proxy).Error; err == nil {
+		response.Error(c, 400, "域名已被使用")
+		return
+	}
+
+	target_status := req.Status
+	if target_status == "" {
+		target_status = proxy.Status
+	}
+	if target_status == "" {
+		target_status = "active"
+	}
+	if target_status == "active" {
+		if container.ReverseProxyLimit <= 0 {
+			response.Error(c, 400, fmt.Sprintf("反向代理配额已用完 (0/%d)", container.ReverseProxyLimit))
+			return
+		}
+		var used_count int64
+		db.DB.Model(&models.ReverseProxy{}).Where("container_name = ? AND status = ? AND id != ?", container.Name, "active", proxy.ID).Count(&used_count)
+		if used_count >= int64(container.ReverseProxyLimit) {
+			response.Error(c, 400, fmt.Sprintf("反向代理配额已用完 (%d/%d)", used_count, container.ReverseProxyLimit))
+			return
+		}
+	}
+
+	proxy.Domain = req.Domain
+	proxy.Protocol = req.Protocol
+	proxy.TargetIP = locked_target_ip
+	proxy.TargetPort = req.TargetPort
+	proxy.EnableSSL = req.EnableSSL
+	proxy.SSLCert = req.SSLCert
+	proxy.SSLKey = req.SSLKey
+	proxy.Description = req.Description
+	proxy.Status = target_status
+
+	if proxy.Protocol == "http" {
+		proxy.PublicPort = 80
+	} else {
+		proxy.PublicPort = 443
+		proxy.EnableSSL = true
+	}
+
+	if err := db.DB.Save(proxy).Error; err != nil {
+		response.Error(c, 500, "更新失败")
+		return
+	}
+
+	if h.plugin.config.Enabled {
+		if err := h.plugin.ApplyConfig(); err != nil {
+			logger.Error("应用Nginx配置失败: %v", err)
+			response.Error(c, 500, "规则已更新但应用配置失败")
+			return
+		}
+	}
+
+	response.Success(c, proxy)
 }
 
 func formatDuration(d time.Duration) string {

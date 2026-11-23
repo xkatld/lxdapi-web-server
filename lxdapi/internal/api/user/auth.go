@@ -5,9 +5,11 @@ import (
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/mojocn/base64Captcha"
+	"lxdapi/internal/core"
 	"lxdapi/internal/service"
 	"lxdapi/pkg/logger"
 	"lxdapi/pkg/response"
+	"net/http"
 	"sync"
 	"time"
 )
@@ -28,10 +30,94 @@ type UserLoginAttempt struct {
 }
 
 const (
-	userMaxAttempts = 5
-	userLockDuration = 15 * time.Minute
-	userResetDuration = 5 * time.Minute
+	userMaxAttempts       = 5
+	userLockDuration      = 15 * time.Minute
+	userResetDuration     = 5 * time.Minute
+	USER_MAX_RATE_LIMIT   = 10000
 )
+
+func is_user_attempt_expired(attempt *UserLoginAttempt, now time.Time) bool {
+	if !attempt.LockedUntil.IsZero() && now.Before(attempt.LockedUntil) {
+		return false
+	}
+	return now.Sub(attempt.LastAttempt) > userResetDuration
+}
+
+func evict_user_attempts_locked(now time.Time) {
+	if len(userLoginAttempts.attempts) < USER_MAX_RATE_LIMIT {
+		return
+	}
+	for k, v := range userLoginAttempts.attempts {
+		if is_user_attempt_expired(v, now) {
+			delete(userLoginAttempts.attempts, k)
+		}
+	}
+	if len(userLoginAttempts.attempts) < USER_MAX_RATE_LIMIT {
+		return
+	}
+	oldest_key := ""
+	var oldest_time time.Time
+	for k, v := range userLoginAttempts.attempts {
+		if oldest_key == "" || v.LastAttempt.Before(oldest_time) {
+			oldest_key = k
+			oldest_time = v.LastAttempt
+		}
+	}
+	if oldest_key != "" {
+		delete(userLoginAttempts.attempts, oldest_key)
+	}
+}
+
+func check_user_locked(client_ip string, now time.Time) (bool, int) {
+	userLoginAttempts.Lock()
+	defer userLoginAttempts.Unlock()
+	attempt, exists := userLoginAttempts.attempts[client_ip]
+	if !exists {
+		return false, 0
+	}
+	if !attempt.LockedUntil.IsZero() && now.Before(attempt.LockedUntil) {
+		remaining := int(attempt.LockedUntil.Sub(now).Minutes()) + 1
+		return true, remaining
+	}
+	if !attempt.LockedUntil.IsZero() && !now.Before(attempt.LockedUntil) {
+		attempt.Count = 0
+		attempt.LockedUntil = time.Time{}
+	}
+	if now.Sub(attempt.LastAttempt) > userResetDuration {
+		delete(userLoginAttempts.attempts, client_ip)
+	}
+	return false, 0
+}
+
+func record_user_failure(client_ip string, now time.Time) (bool, int) {
+	userLoginAttempts.Lock()
+	defer userLoginAttempts.Unlock()
+	attempt, exists := userLoginAttempts.attempts[client_ip]
+	if !exists {
+		evict_user_attempts_locked(now)
+		attempt = &UserLoginAttempt{}
+		userLoginAttempts.attempts[client_ip] = attempt
+	} else if !attempt.LockedUntil.IsZero() && !now.Before(attempt.LockedUntil) {
+		attempt.Count = 0
+		attempt.LockedUntil = time.Time{}
+	}
+	if now.Sub(attempt.LastAttempt) > userResetDuration {
+		attempt.Count = 0
+	}
+	attempt.Count++
+	attempt.LastAttempt = now
+	if attempt.Count >= userMaxAttempts {
+		attempt.LockedUntil = now.Add(userLockDuration)
+		return true, int(userLockDuration.Minutes())
+	}
+	return false, userMaxAttempts - attempt.Count
+}
+
+func reset_user_attempts(client_ip string) {
+	userLoginAttempts.Lock()
+	defer userLoginAttempts.Unlock()
+	delete(userLoginAttempts.attempts, client_ip)
+}
 
 // GetCaptcha 获取验证码
 // @Summary 获取验证码
@@ -85,33 +171,12 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	clientIP := c.ClientIP()
-	
-	userLoginAttempts.Lock()
-	attempt, exists := userLoginAttempts.attempts[clientIP]
-	if !exists {
-		attempt = &UserLoginAttempt{}
-		userLoginAttempts.attempts[clientIP] = attempt
-	}
-	
+	client_ip := c.ClientIP()
 	now := time.Now()
-	
-	if !attempt.LockedUntil.IsZero() && now.Before(attempt.LockedUntil) {
-		remaining := int(attempt.LockedUntil.Sub(now).Minutes())
-		userLoginAttempts.Unlock()
-		response.Error(c, 429, fmt.Sprintf("登录已被锁定，请在%d分钟后重试", remaining+1))
+	if locked, remaining := check_user_locked(client_ip, now); locked {
+		response.Error(c, 429, fmt.Sprintf("登录已被锁定，请在%d分钟后重试", remaining))
 		return
 	}
-	
-	if attempt.LockedUntil.Before(now) && !attempt.LockedUntil.IsZero() {
-		attempt.Count = 0
-		attempt.LockedUntil = time.Time{}
-	}
-	
-	if now.Sub(attempt.LastAttempt) > userResetDuration {
-		attempt.Count = 0
-	}
-	userLoginAttempts.Unlock()
 
 	session := sessions.Default(c)
 	captchaID := session.Get("user_captcha_id")
@@ -129,34 +194,33 @@ func Login(c *gin.Context) {
 
 	user, err := service.GetUserByUsernameAndAPIKey(req.Username, req.Password)
 	if err != nil {
-		errMsg := err.Error()
-		if errMsg == "账户已被禁用，请联系管理员" {
-			response.Error(c, 403, errMsg)
+		err_msg := err.Error()
+		if err_msg == "账户已被禁用，请联系管理员" {
+			response.Error(c, 403, err_msg)
 			return
 		}
 		
-		userLoginAttempts.Lock()
-		attempt.Count++
-		attempt.LastAttempt = now
-		
-		if attempt.Count >= userMaxAttempts {
-			attempt.LockedUntil = now.Add(userLockDuration)
-			userLoginAttempts.Unlock()
-			logger.Warn("用户登录失败次数过多: %s, IP: %s", req.Username, clientIP)
-			response.Error(c, 429, fmt.Sprintf("登录失败次数过多，账户已被锁定%d分钟", int(userLockDuration.Minutes())))
+		locked, remaining_or_mins := record_user_failure(client_ip, time.Now())
+		if locked {
+			logger.Warn("用户登录失败次数过多: %s, IP: %s", req.Username, client_ip)
+			response.Error(c, 429, fmt.Sprintf("登录失败次数过多，账户已被锁定%d分钟", remaining_or_mins))
 			return
 		}
-		userLoginAttempts.Unlock()
 		
 		logger.Warn("用户登录失败: %s", req.Username)
-		response.Error(c, 401, fmt.Sprintf("用户名或密码无效，剩余尝试次数: %d", userMaxAttempts-attempt.Count))
+		response.Error(c, 401, fmt.Sprintf("用户名或密码无效，剩余尝试次数: %d", remaining_or_mins))
 		return
 	}
 
-	userLoginAttempts.Lock()
-	delete(userLoginAttempts.attempts, clientIP)
-	userLoginAttempts.Unlock()
+	reset_user_attempts(client_ip)
 
+	session.Options(sessions.Options{
+		MaxAge:   86400,
+		HttpOnly: true,
+		Secure:   core.GlobalConfig.System.Server.TLS.Enabled,
+		SameSite: http.SameSiteLaxMode,
+		Path:     "/",
+	})
 	session.Set("user_logged_in", true)
 	session.Set("user_username", user.Username)
 	session.Set("user_id", user.ID)

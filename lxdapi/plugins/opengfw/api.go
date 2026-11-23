@@ -23,7 +23,8 @@ func NewAPIHandlerV2(plugin *OpenGFWPlugin) *APIHandlerV2 {
 func (h *APIHandlerV2) GetConfig(c *gin.Context) {
 	var config models.FirewallConfig
 	if err := db.DB.First(&config).Error; err != nil {
-		response.Error(c, 500, "获取配置失败: "+err.Error())
+		logger.Error("获取防火墙配置失败: %v", err)
+		response.Error(c, 500, "获取配置失败")
 		return
 	}
 	response.Success(c, config)
@@ -35,7 +36,7 @@ func (h *APIHandlerV2) UpdateConfig(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
 
@@ -48,7 +49,8 @@ func (h *APIHandlerV2) UpdateConfig(c *gin.Context) {
 	config.Rules = req.Rules
 
 	if err := db.DB.Save(&config).Error; err != nil {
-		response.Error(c, 500, "保存配置失败: "+err.Error())
+		logger.Error("保存防火墙配置失败: %v", err)
+		response.Error(c, 500, "保存配置失败")
 		return
 	}
 
@@ -59,12 +61,12 @@ func (h *APIHandlerV2) UpdateConfig(c *gin.Context) {
 func (h *APIHandlerV2) ApplyConfig(c *gin.Context) {
 	if err := h.plugin.ApplyConfig(); err != nil {
 		logger.Error("应用配置失败: %v", err)
-		response.Error(c, 500, "应用配置失败: "+err.Error())
+		response.Error(c, 500, "应用配置失败")
 		return
 	}
 	
 	now := time.Now()
-	db.DB.Model(&models.FirewallConfig{}).Where("id = 1").Update("last_applied", &now)
+	db.DB.Model(&models.FirewallConfig{}).Where("id = ?", 1).Update("last_applied", &now)
 	
 	logger.OK("防火墙配置已应用")
 	response.Success(c, gin.H{"message": "配置已应用，规则已生效"})
@@ -73,7 +75,8 @@ func (h *APIHandlerV2) ApplyConfig(c *gin.Context) {
 func (h *APIHandlerV2) GetStatus(c *gin.Context) {
 	stats, err := h.plugin.processManager.GetStatus()
 	if err != nil {
-		response.Error(c, 500, "获取状态失败: "+err.Error())
+		logger.Error("获取防火墙状态失败: %v", err)
+		response.Error(c, 500, "获取状态失败")
 		return
 	}
 
@@ -85,15 +88,17 @@ func (h *APIHandlerV2) GetStatus(c *gin.Context) {
 }
 
 func (h *APIHandlerV2) StartService(c *gin.Context) {
-	db.DB.Model(&models.FirewallConfig{}).Where("id = 1").Update("enabled", true)
+	db.DB.Model(&models.FirewallConfig{}).Where("id = ?", 1).Update("enabled", true)
 	
 	if err := h.plugin.loadConfig(); err != nil {
-		response.Error(c, 500, "加载配置失败: "+err.Error())
+		logger.Error("加载防火墙配置失败: %v", err)
+		response.Error(c, 500, "加载配置失败")
 		return
 	}
 	
 	if err := h.plugin.Start(); err != nil {
-		response.Error(c, 500, "启动失败: "+err.Error())
+		logger.Error("启动防火墙服务失败: %v", err)
+		response.Error(c, 500, "启动失败")
 		return
 	}
 	
@@ -103,11 +108,12 @@ func (h *APIHandlerV2) StartService(c *gin.Context) {
 
 func (h *APIHandlerV2) StopService(c *gin.Context) {
 	if err := h.plugin.Stop(); err != nil {
-		response.Error(c, 500, "停止失败: "+err.Error())
+		logger.Error("停止防火墙服务失败: %v", err)
+		response.Error(c, 500, "停止失败")
 		return
 	}
 	
-	db.DB.Model(&models.FirewallConfig{}).Where("id = 1").Update("enabled", false)
+	db.DB.Model(&models.FirewallConfig{}).Where("id = ?", 1).Update("enabled", false)
 	
 	logger.OK("防火墙服务已停止")
 	response.Success(c, gin.H{"message": "服务已停止"})
@@ -115,7 +121,8 @@ func (h *APIHandlerV2) StopService(c *gin.Context) {
 
 func (h *APIHandlerV2) RestartService(c *gin.Context) {
 	if err := h.plugin.processManager.Restart(); err != nil {
-		response.Error(c, 500, "重启失败: "+err.Error())
+		logger.Error("重启防火墙服务失败: %v", err)
+		response.Error(c, 500, "重启失败")
 		return
 	}
 	
@@ -134,7 +141,8 @@ func (h *APIHandlerV2) GetLogs(c *gin.Context) {
 	
 	logs, err := h.plugin.processManager.GetLogs(lines)
 	if err != nil {
-		response.Error(c, 500, "获取日志失败: "+err.Error())
+		logger.Error("获取防火墙日志失败: %v", err)
+		response.Error(c, 500, "获取日志失败")
 		return
 	}
 	
@@ -143,7 +151,8 @@ func (h *APIHandlerV2) GetLogs(c *gin.Context) {
 
 func (h *APIHandlerV2) ClearLogs(c *gin.Context) {
 	if err := h.plugin.processManager.ClearLogs(); err != nil {
-		response.Error(c, 500, "清空日志失败: "+err.Error())
+		logger.Error("清空防火墙日志失败: %v", err)
+		response.Error(c, 500, "清空日志失败")
 		return
 	}
 	

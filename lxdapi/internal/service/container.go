@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"lxdapi/internal/cache"
 	"lxdapi/internal/db"
@@ -70,7 +71,109 @@ func generatePassword() string {
 	return string(password)
 }
 
+func checkTemplateUserPermission(template *models.Template, username string) (int, string) {
+	if template.AllowedUsers != "" && template.AllowedUsers != "[]" {
+		var allowedUsers []string
+		if err := json.Unmarshal([]byte(template.AllowedUsers), &allowedUsers); err == nil && len(allowedUsers) > 0 {
+			for _, u := range allowedUsers {
+				if u == username {
+					return 0, ""
+				}
+			}
+			return 403, "无权使用该模板"
+		}
+	}
+	return 0, ""
+}
+
+func preferredTemplateIdentifier(template *models.Template, fallback string) string {
+	if template != nil {
+		if template.Alias != "" && lxc.ValidateImageName(template.Alias) == nil {
+			return template.Alias
+		}
+		if template.Fingerprint != "" && lxc.ValidateImageName(template.Fingerprint) == nil {
+			return template.Fingerprint
+		}
+	}
+	return fallback
+}
+
+func resolveStoredImageIdentifier(image string) string {
+	var template models.Template
+	if err := db.DB.Where("fingerprint = ? OR alias = ?", image, image).First(&template).Error; err == nil {
+		return preferredTemplateIdentifier(&template, image)
+	}
+	return image
+}
+
+func resolveHistoricalImageIdentifier(image string) string {
+	var template models.Template
+	if err := db.DB.Where("fingerprint = ? OR alias = ? OR description = ?", image, image, image).First(&template).Error; err == nil {
+		return preferredTemplateIdentifier(&template, image)
+	}
+	return image
+}
+
+func CheckTemplateAccess(image, username string) (int, string) {
+	if image == "" {
+		return 400, "镜像不能为空"
+	}
+	var template models.Template
+	if err := db.DB.Where("fingerprint = ? OR alias = ?", image, image).First(&template).Error; err != nil {
+		return 404, "模板不存在"
+	}
+	return checkTemplateUserPermission(&template, username)
+}
+
+func ResolveReinstallTemplateAccess(reqImage, fallbackImage, username string) (string, int, string) {
+	var template models.Template
+	if reqImage != "" {
+		if err := db.DB.Where("fingerprint = ? OR alias = ?", reqImage, reqImage).First(&template).Error; err != nil {
+			return "", 404, "模板不存在"
+		}
+		if code, msg := checkTemplateUserPermission(&template, username); code != 0 {
+			return "", code, msg
+		}
+		return preferredTemplateIdentifier(&template, reqImage), 0, ""
+	}
+	if fallbackImage == "" {
+		return "", 400, "镜像不能为空"
+	}
+	if err := db.DB.Where("fingerprint = ? OR alias = ? OR description = ?", fallbackImage, fallbackImage, fallbackImage).First(&template).Error; err != nil {
+		return "", 404, "模板不存在"
+	}
+	if code, msg := checkTemplateUserPermission(&template, username); code != 0 {
+		return "", code, msg
+	}
+	resolved := preferredTemplateIdentifier(&template, fallbackImage)
+	if err := lxc.ValidateImageName(resolved); err != nil {
+		return "", 400, err.Error()
+	}
+	return resolved, 0, ""
+}
+
+func (s *ContainerService) setContainerHostname(ctx context.Context, name string) {
+	if _, err := s.lxcClient.ExecInContainer(ctx, name, []string{"hostnamectl", "set-hostname", name}); err != nil {
+		logger.Warn("使用hostnamectl设置主机名失败，尝试直接修改文件: %v", err)
+		if _, err := s.lxcClient.ExecInContainerWithStdin(ctx, name, name+"\n", []string{"tee", "/etc/hostname"}); err != nil {
+			logger.Warn("写入/etc/hostname失败: %v", err)
+			return
+		}
+		if _, err := s.lxcClient.ExecInContainer(ctx, name, []string{"hostname", name}); err != nil {
+			logger.Warn("设置主机名失败: %v", err)
+			return
+		}
+	}
+	logger.Info("主机名已设置: %s", name)
+}
+
 func (s *ContainerService) Create(ctx context.Context, req *models.CreateContainerRequest) error {
+	if err := lxc.ValidateContainerName(req.Name); err != nil {
+		return err
+	}
+	if err := lxc.ValidateImageName(req.Image); err != nil {
+		return err
+	}
 	if s.lxcClient.ContainerExists(ctx, req.Name) {
 		return fmt.Errorf("容器已存在: %s", req.Name)
 	}
@@ -118,6 +221,9 @@ func (s *ContainerService) Create(ctx context.Context, req *models.CreateContain
 	}
 	
 	storagePool := NewStorageService().GetDefault()
+	if err := lxc.ValidateStoragePoolName(storagePool); err != nil {
+		return err
+	}
 	logger.Info("使用存储池: %s", storagePool)
 	
 	if err := s.lxcClient.CreateContainerWithConfig(ctx, req.Name, req.Image, storagePool, req.CPU, memory, disk, ingress, egress, req.AllowNesting, req.MemorySwap, req.Privileged, "", cpuAllowance, ioRead, ioWrite, req.ProcessesLimit); err != nil {
@@ -128,25 +234,9 @@ func (s *ContainerService) Create(ctx context.Context, req *models.CreateContain
 		logger.Warn("启动容器失败: %v", err)
 	}
 	
-	imageAlias := req.Image
-	if info, err := s.lxcClient.GetContainerInfo(ctx, req.Name); err == nil {
-		if imageDesc, ok := info.Config["image.description"].(string); ok && imageDesc != "" {
-			imageAlias = imageDesc
-			logger.Info("从LXD获取镜像别名: %s", imageAlias)
-		}
-	}
+	imageAlias := resolveStoredImageIdentifier(req.Image)
 	
-	if _, err := s.lxcClient.ExecInContainer(ctx, req.Name, []string{"hostnamectl", "set-hostname", req.Name}); err != nil {
-		logger.Warn("使用hostnamectl设置主机名失败，尝试直接修改文件: %v", err)
-		setHostnameCmd := fmt.Sprintf("echo '%s' > /etc/hostname && hostname %s", req.Name, req.Name)
-		if _, err := s.lxcClient.ExecInContainer(ctx, req.Name, []string{"sh", "-c", setHostnameCmd}); err != nil {
-			logger.Warn("设置主机名失败: %v", err)
-		} else {
-			logger.Info("主机名已设置: %s", req.Name)
-		}
-	} else {
-		logger.Info("主机名已设置: %s", req.Name)
-	}
+	s.setContainerHostname(ctx, req.Name)
 	
 	actualPassword := req.Password
 	if actualPassword == "" {
@@ -400,6 +490,9 @@ func CheckContainerOperationByName(name string, is_user_portal bool, action stri
 }
 
 func (s *ContainerService) Reinstall(ctx context.Context, name, image, password string) error {
+	if err := lxc.ValidateContainerName(name); err != nil {
+		return err
+	}
 	var container models.Container
 	if err := db.DB.Where("name = ?", name).First(&container).Error; err != nil {
 		return fmt.Errorf("容器不存在: %v", err)
@@ -408,7 +501,12 @@ func (s *ContainerService) Reinstall(ctx context.Context, name, image, password 
 	logger.Info("开始重装容器: %s", name)
 
 	if image == "" {
-		image = container.Image
+		image = resolveHistoricalImageIdentifier(container.Image)
+	} else {
+		image = resolveStoredImageIdentifier(image)
+	}
+	if err := lxc.ValidateImageName(image); err != nil {
+		return err
 	}
 
 	needCreate := false
@@ -453,6 +551,9 @@ func (s *ContainerService) Reinstall(ctx context.Context, name, image, password 
 			ioWrite = fmt.Sprintf("%dMB", container.IOWrite)
 		}
 		storagePool := NewStorageService().GetDefault()
+		if err := lxc.ValidateStoragePoolName(storagePool); err != nil {
+			return err
+		}
 		if err := s.lxcClient.CreateContainerWithConfig(ctx, name, image, storagePool,
 			container.CPU, memory, disk, ingress, egress,
 			container.AllowNesting, container.MemorySwap, container.Privileged,
@@ -470,25 +571,9 @@ func (s *ContainerService) Reinstall(ctx context.Context, name, image, password 
 		logger.Info("容器已在运行中，跳过启动")
 	}
 
-	imageAlias := image
-	if info, err := s.lxcClient.GetContainerInfo(ctx, name); err == nil {
-		if imageDesc, ok := info.Config["image.description"].(string); ok && imageDesc != "" {
-			imageAlias = imageDesc
-			logger.Info("从LXD获取镜像别名: %s", imageAlias)
-		}
-	}
+	imageAlias := resolveStoredImageIdentifier(image)
 
-	if _, err := s.lxcClient.ExecInContainer(ctx, name, []string{"hostnamectl", "set-hostname", name}); err != nil {
-		logger.Warn("使用hostnamectl设置主机名失败，尝试直接修改文件: %v", err)
-		setHostnameCmd := fmt.Sprintf("echo '%s' > /etc/hostname && hostname %s", name, name)
-		if _, err := s.lxcClient.ExecInContainer(ctx, name, []string{"sh", "-c", setHostnameCmd}); err != nil {
-			logger.Warn("设置主机名失败: %v", err)
-		} else {
-			logger.Info("主机名已设置: %s", name)
-		}
-	} else {
-		logger.Info("主机名已设置: %s", name)
-	}
+	s.setContainerHostname(ctx, name)
 
 	finalPassword := password
 	if finalPassword == "" {

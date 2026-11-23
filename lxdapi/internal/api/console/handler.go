@@ -3,11 +3,15 @@ package console
 import (
 	"encoding/json"
 	"lxdapi/internal/console"
+	"lxdapi/internal/db"
 	"lxdapi/internal/service"
+	"lxdapi/models"
 	"lxdapi/pkg/auth"
 	"lxdapi/pkg/logger"
 	"lxdapi/pkg/response"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -17,7 +21,18 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  8192,
 	WriteBufferSize: 8192,
 	CheckOrigin: func(r *http.Request) bool {
-		return true
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return false
+		}
+		u, err := url.Parse(origin)
+		if err != nil {
+			return false
+		}
+		if u.Scheme != "http" && u.Scheme != "https" {
+			return false
+		}
+		return strings.EqualFold(u.Host, r.Host)
 	},
 }
 
@@ -42,15 +57,47 @@ func CreateToken(c *gin.Context) {
 		return
 	}
 
-	if auth_level_val, exists := c.Get("auth_level"); exists {
-		if auth_level, ok := auth_level_val.(auth.APILevel); ok {
-			if auth_level == auth.LevelUser || auth_level == auth.LevelContainer {
-				if deny_code, deny_msg := service.CheckContainerOperationByName(req.Hostname, auth_level == auth.LevelUser, "console"); deny_code != 0 {
-					response.Error(c, deny_code, deny_msg)
-					return
-				}
-			}
+	auth_level_val, exists := c.Get("auth_level")
+	if !exists {
+		response.Error(c, 401, "未授权")
+		return
+	}
+	auth_level, ok := auth_level_val.(auth.APILevel)
+	if !ok {
+		response.Error(c, 403, "权限等级无效")
+		return
+	}
+
+	switch auth_level {
+	case auth.LevelSystem, auth.LevelAdmin:
+	case auth.LevelUser:
+		username := c.GetString("username")
+		if username == "" {
+			response.Error(c, 401, "未授权")
+			return
 		}
+		var container models.Container
+		if err := db.DB.Where("name = ? AND user_id = ?", req.Hostname, username).First(&container).Error; err != nil {
+			response.Error(c, 403, "无权操作此容器")
+			return
+		}
+		if deny_code, deny_msg := service.CheckContainerOperationAllowed(&container, true, "console"); deny_code != 0 {
+			response.Error(c, deny_code, deny_msg)
+			return
+		}
+	case auth.LevelContainer:
+		container_name := c.GetString("container_name")
+		if container_name == "" || container_name != req.Hostname {
+			response.Error(c, 403, "无权操作此容器")
+			return
+		}
+		if deny_code, deny_msg := service.CheckContainerOperationByName(req.Hostname, false, "console"); deny_code != 0 {
+			response.Error(c, deny_code, deny_msg)
+			return
+		}
+	default:
+		response.Error(c, 403, "无权操作")
+		return
 	}
 
 	token, err := console.GenerateToken(req.Hostname)
@@ -82,7 +129,7 @@ func HandleWebSocket(c *gin.Context) {
 		return
 	}
 	
-	containerName, valid := console.ValidateAndConsume(token)
+	container_name, valid := console.ValidateAndConsume(token)
 	if !valid {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"code": 401,
@@ -91,7 +138,7 @@ func HandleWebSocket(c *gin.Context) {
 		return
 	}
 	
-	logger.Info("WebSocket控制台连接请求: %s", containerName)
+	logger.Info("WebSocket控制台连接请求: %s", container_name)
 	
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -104,7 +151,7 @@ func HandleWebSocket(c *gin.Context) {
 	}
 	defer conn.Close()
 	
-	session, err := console.CreateSession(containerName, conn)
+	session, err := console.CreateSession(container_name, conn)
 	if err != nil {
 		logger.Error("创建控制台会话失败: %v", err)
 		conn.WriteMessage(websocket.TextMessage, []byte("错误: "+err.Error()+"\r\n"))
@@ -115,7 +162,7 @@ func HandleWebSocket(c *gin.Context) {
 	logger.Info("控制台会话建立成功: %s", session.ID)
 	
 	for {
-		messageType, message, err := conn.ReadMessage()
+		message_type, message, err := conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				logger.Error("WebSocket连接异常关闭: %v", err)
@@ -125,7 +172,7 @@ func HandleWebSocket(c *gin.Context) {
 			break
 		}
 		
-		if messageType == websocket.TextMessage {
+		if message_type == websocket.TextMessage {
 			var msg struct {
 				Type string `json:"type"`
 				Data string `json:"data"`

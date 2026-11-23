@@ -87,16 +87,33 @@ func AllocatePortMapping(c *gin.Context) {
 		PublicPort    int    `json:"public_port"`
 		ContainerPort int    `json:"container_port" binding:"required"`
 		PortCount     int    `json:"port_count"`
+		Protocol      string `json:"protocol"`
 		Description   string `json:"description"`
 	}
 	
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
-	
-	if req.PortCount <= 0 {
-		req.PortCount = 1
+
+	if req.Protocol != "" {
+		if err := service.ValidatePortMappingProtocol(req.Protocol); err != nil {
+			response.Error(c, 400, err.Error())
+			return
+		}
+	}
+
+	portCount, err := service.NormalizeAndValidatePortCount(req.PortCount)
+	if err != nil {
+		response.Error(c, 400, err.Error())
+		return
+	}
+	req.PortCount = portCount
+
+	containerPortEnd, err := service.ValidatePortRange(req.ContainerPort, req.PortCount, "容器端口")
+	if err != nil {
+		response.Error(c, 400, err.Error())
+		return
 	}
 	
 	var portRangeConfig models.PortRangeConfig
@@ -127,17 +144,17 @@ func AllocatePortMapping(c *gin.Context) {
 			req.PublicPort, err = pmService.FindAvailableV6Port(portRangeConfig.V6PortStart, portRangeConfig.V6PortEnd, req.PortCount, "both")
 		}
 		if err != nil {
-			response.Error(c, 400, "随机分配端口失败: "+err.Error())
+			logger.Error("随机分配端口失败: %v", err)
+			response.Error(c, 400, "随机分配端口失败")
 			return
 		}
 	}
 
 	publicPortEnd := req.PublicPort + req.PortCount - 1
-	containerPortEnd := req.ContainerPort + req.PortCount - 1
 
 	if version == "v4" {
-		if req.PublicPort < portRangeConfig.V4PortStart || req.PublicPort > portRangeConfig.V4PortEnd {
-			response.Error(c, 400, fmt.Sprintf("IPv4公网端口必须在 %d-%d 范围内", portRangeConfig.V4PortStart, portRangeConfig.V4PortEnd))
+		if _, err := service.ValidatePublicPortRange(req.PublicPort, req.PortCount, portRangeConfig.V4PortStart, portRangeConfig.V4PortEnd); err != nil {
+			response.Error(c, 400, err.Error())
 			return
 		}
 
@@ -204,8 +221,8 @@ func AllocatePortMapping(c *gin.Context) {
 			"total":    len(createdMappings),
 		})
 	} else {
-		if req.PublicPort < portRangeConfig.V6PortStart || req.PublicPort > portRangeConfig.V6PortEnd {
-			response.Error(c, 400, fmt.Sprintf("IPv6公网端口必须在 %d-%d 范围内", portRangeConfig.V6PortStart, portRangeConfig.V6PortEnd))
+		if _, err := service.ValidatePublicPortRange(req.PublicPort, req.PortCount, portRangeConfig.V6PortStart, portRangeConfig.V6PortEnd); err != nil {
+			response.Error(c, 400, err.Error())
 			return
 		}
 
@@ -303,7 +320,7 @@ func ReleasePortMapping(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
 
@@ -315,7 +332,8 @@ func ReleasePortMapping(c *gin.Context) {
 		if version == "v4" {
 			for _, id := range req.IDs {
 				if err := pmService.ReleaseV4Mapping(id); err != nil {
-					failed = append(failed, gin.H{"id": id, "error": err.Error()})
+					logger.Error("释放IPv4端口映射 %d 失败: %v", id, err)
+					failed = append(failed, gin.H{"id": id, "error": "释放失败"})
 				} else {
 					successIDs = append(successIDs, id)
 				}
@@ -323,7 +341,8 @@ func ReleasePortMapping(c *gin.Context) {
 		} else {
 			for _, id := range req.IDs {
 				if err := pmService.ReleaseV6Mapping(id); err != nil {
-					failed = append(failed, gin.H{"id": id, "error": err.Error()})
+					logger.Error("释放IPv6端口映射 %d 失败: %v", id, err)
+					failed = append(failed, gin.H{"id": id, "error": "释放失败"})
 				} else {
 					successIDs = append(successIDs, id)
 				}
@@ -349,12 +368,14 @@ func ReleasePortMapping(c *gin.Context) {
 	if req.ID > 0 {
 		if version == "v4" {
 			if err := pmService.ReleaseV4Mapping(req.ID); err != nil {
-				response.Error(c, 500, err.Error())
+				logger.Error("释放IPv4端口映射 %d 失败: %v", req.ID, err)
+				response.Error(c, 500, "释放端口映射失败")
 				return
 			}
 		} else {
 			if err := pmService.ReleaseV6Mapping(req.ID); err != nil {
-				response.Error(c, 500, err.Error())
+				logger.Error("释放IPv6端口映射 %d 失败: %v", req.ID, err)
+				response.Error(c, 500, "释放端口映射失败")
 				return
 			}
 		}
@@ -363,6 +384,12 @@ func ReleasePortMapping(c *gin.Context) {
 	}
 
 	if req.ContainerName != "" && req.PublicPort > 0 {
+		if req.Protocol != "" {
+			if err := service.ValidatePortMappingProtocol(req.Protocol); err != nil {
+				response.Error(c, 400, err.Error())
+				return
+			}
+		}
 		if version == "v4" {
 			var mappings []models.PortMappingV4
 			query := db.DB.Where("container_name = ? AND public_port = ?", req.ContainerName, req.PublicPort)
@@ -375,7 +402,8 @@ func ReleasePortMapping(c *gin.Context) {
 			}
 			for _, mapping := range mappings {
 				if err := pmService.ReleaseV4Mapping(mapping.ID); err != nil {
-					response.Error(c, 500, err.Error())
+					logger.Error("释放IPv4端口映射 %d 失败: %v", mapping.ID, err)
+					response.Error(c, 500, "释放端口映射失败")
 					return
 				}
 			}
@@ -391,7 +419,8 @@ func ReleasePortMapping(c *gin.Context) {
 			}
 			for _, mapping := range mappings {
 				if err := pmService.ReleaseV6Mapping(mapping.ID); err != nil {
-					response.Error(c, 500, err.Error())
+					logger.Error("释放IPv6端口映射 %d 失败: %v", mapping.ID, err)
+					response.Error(c, 500, "释放端口映射失败")
 					return
 				}
 			}
@@ -467,8 +496,28 @@ func SaveNATConfig(c *gin.Context) {
 
 	var configs []NATConfigItem
 	if err := c.ShouldBindJSON(&configs); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
+	}
+
+	for _, config := range configs {
+		if !isValidIPByVersion(config.IP, version) {
+			response.Error(c, 400, "NAT IP地址格式无效")
+			return
+		}
+		if config.DisplayIP != "" && !isValidIPByVersion(config.DisplayIP, version) {
+			response.Error(c, 400, "NAT展示IP地址格式无效")
+			return
+		}
+		if !isValidInterfaceName(config.Interface) {
+			response.Error(c, 400, "NAT网卡名称格式无效")
+			return
+		}
+		proto := strings.ToLower(strings.TrimSpace(config.Protocol))
+		if proto != "" && proto != "tcp" && proto != "udp" && proto != "both" && proto != "tcp/udp" && proto != "all" {
+			response.Error(c, 400, "NAT协议类型无效")
+			return
+		}
 	}
 
 	if version == "v4" {

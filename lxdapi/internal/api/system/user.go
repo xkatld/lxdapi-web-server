@@ -36,7 +36,7 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
-	allowNesting := true
+	allowNesting := false
 	memorySwap := true
 	if req.AllowNesting != nil {
 		allowNesting = *req.AllowNesting
@@ -176,6 +176,11 @@ func UpdateUser(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, 400, "参数错误")
+		return
+	}
+
+	if !isAdminAuthLevel(c) && req.AllowNesting != nil {
+		response.Error(c, 403, "系统接口禁止修改或开启嵌套容器权限")
 		return
 	}
 

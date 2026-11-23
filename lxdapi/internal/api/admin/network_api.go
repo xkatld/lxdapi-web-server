@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"lxdapi/pkg/logger"
 	"lxdapi/pkg/response"
 )
 
@@ -40,7 +41,7 @@ func SetNetworkNATStatus(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
 
@@ -53,7 +54,8 @@ func SetNetworkNATStatus(c *gin.Context) {
 			value = "true"
 		}
 		if err := exec.CommandContext(ctx, "lxc", "network", "set", "lxdbr0", "ipv4.nat", value).Run(); err != nil {
-			response.Error(c, 500, "设置IPv4 NAT失败: "+err.Error())
+			logger.Error("设置IPv4 NAT失败: %v", err)
+			response.Error(c, 500, "设置IPv4 NAT失败")
 			return
 		}
 	}
@@ -64,7 +66,8 @@ func SetNetworkNATStatus(c *gin.Context) {
 			value = "true"
 		}
 		if err := exec.CommandContext(ctx, "lxc", "network", "set", "lxdbr0", "ipv6.nat", value).Run(); err != nil {
-			response.Error(c, 500, "设置IPv6 NAT失败: "+err.Error())
+			logger.Error("设置IPv6 NAT失败: %v", err)
+			response.Error(c, 500, "设置IPv6 NAT失败")
 			return
 		}
 	}

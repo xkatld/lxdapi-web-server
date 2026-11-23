@@ -51,7 +51,7 @@ func RefreshCache(c *gin.Context) {
 	if name != "" {
 		if err := cache.RefreshContainerCache(ctx, name); err != nil {
 			logger.Error("刷新容器 %s 缓存失败: %v", name, err)
-			response.Error(c, 500, "刷新失败: "+err.Error())
+			response.Error(c, 500, "刷新失败")
 			return
 		}
 
@@ -87,7 +87,8 @@ func RefreshCache(c *gin.Context) {
 	})
 
 	if err != nil {
-		response.Error(c, 500, "创建任务失败: "+err.Error())
+		logger.Error("创建刷新缓存任务失败: %v", err)
+		response.Error(c, 500, "创建任务失败")
 		return
 	}
 
@@ -129,7 +130,7 @@ func UpdateAutoRefreshSettings(c *gin.Context) {
 	var req UpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.Error("参数绑定失败: %v", err)
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
 	
@@ -160,7 +161,7 @@ func UpdateAutoRefreshSettings(c *gin.Context) {
 		}
 		if err := db.DB.Create(&newSettings).Error; err != nil {
 			logger.Error("创建配置失败: %v", err)
-			response.Error(c, 500, "创建配置失败: "+err.Error())
+			response.Error(c, 500, "创建配置失败")
 			return
 		}
 		logger.OK("创建自动刷新配置: 启用=%v, 间隔=%d分钟", req.Enabled, req.Interval)
@@ -175,7 +176,7 @@ func UpdateAutoRefreshSettings(c *gin.Context) {
 	
 	if err := db.DB.Save(&settings).Error; err != nil {
 		logger.Error("保存配置失败: %v", err)
-		response.Error(c, 500, "保存配置失败: "+err.Error())
+		response.Error(c, 500, "保存配置失败")
 		return
 	}
 	

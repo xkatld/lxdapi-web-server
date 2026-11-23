@@ -5,6 +5,7 @@ import (
 	"lxdapi/internal/ipv4"
 	"lxdapi/internal/ipv6"
 	"lxdapi/internal/service"
+	"lxdapi/pkg/logger"
 	"lxdapi/pkg/response"
 )
 
@@ -53,8 +54,9 @@ func GetContainerIP(c *gin.Context) {
 		} else {
 			ips, err := ipv4.GlobalManager.GetContainerIPs(name)
 			if err != nil {
+				logger.Error("获取容器 %s IPv4失败: %v", name, err)
 				if version == "v4" {
-					response.Error(c, 500, err.Error())
+					response.Error(c, 500, "获取IPv4地址失败")
 					return
 				}
 				result["ipv4"] = []string{}
@@ -77,8 +79,9 @@ func GetContainerIP(c *gin.Context) {
 		} else {
 			ips, err := ipv6.GlobalManager.GetContainerIPs(name)
 			if err != nil {
+				logger.Error("获取容器 %s IPv6失败: %v", name, err)
 				if version == "v6" {
-					response.Error(c, 500, err.Error())
+					response.Error(c, 500, "获取IPv6地址失败")
 					return
 				}
 				result["ipv6"] = []string{}
@@ -133,7 +136,8 @@ func AllocateIP(c *gin.Context) {
 	if version == "v4" {
 		ips, err := ipv4Service.AllocateIPv4(ctx, req.Name, req.UserID, req.Count)
 		if err != nil {
-			response.Error(c, 500, err.Error())
+			logger.Error("分配容器 %s IPv4失败: %v", req.Name, err)
+			response.Error(c, 500, "分配IPv4地址失败")
 			return
 		}
 		response.Success(c, gin.H{
@@ -144,7 +148,8 @@ func AllocateIP(c *gin.Context) {
 	} else {
 		ips, err := ipv6Service.AllocateIPv6(ctx, req.Name, req.UserID, req.Count)
 		if err != nil {
-			response.Error(c, 500, err.Error())
+			logger.Error("分配容器 %s IPv6失败: %v", req.Name, err)
+			response.Error(c, 500, "分配IPv6地址失败")
 			return
 		}
 		response.Success(c, gin.H{
@@ -187,13 +192,15 @@ func ReleaseIP(c *gin.Context) {
 
 	if version == "v4" {
 		if err := ipv4Service.ReleaseIPv4(req.Name, req.IP); err != nil {
-			response.Error(c, 500, err.Error())
+			logger.Error("释放容器 %s IPv4失败: %v", req.Name, err)
+			response.Error(c, 500, "释放IPv4地址失败")
 			return
 		}
 		response.Success(c, "IPv4释放成功")
 	} else {
 		if err := ipv6Service.ReleaseIPv6(req.Name, req.IP); err != nil {
-			response.Error(c, 500, err.Error())
+			logger.Error("释放容器 %s IPv6失败: %v", req.Name, err)
+			response.Error(c, 500, "释放IPv6地址失败")
 			return
 		}
 		response.Success(c, "IPv6释放成功")

@@ -31,6 +31,9 @@ type ContainerState struct {
 }
 
 func (c *Client) GetContainerInfo(ctx context.Context, name string) (*ContainerInfo, error) {
+	if err := ValidateContainerName(name); err != nil {
+		return nil, err
+	}
 	output, err := c.exec(ctx, "query", fmt.Sprintf("/1.0/instances/%s?recursion=2", name))
 	if err != nil {
 		return nil, fmt.Errorf("获取容器信息失败: %v", err)

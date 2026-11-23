@@ -67,7 +67,7 @@ func SyncStoragePools(c *gin.Context) {
 	added, updated, deleted, err := svc.SyncFromLXD(c.Request.Context())
 	if err != nil {
 		logger.Error("同步存储池失败: %v", err)
-		response.Error(c, 500, "同步失败: "+err.Error())
+		response.Error(c, 500, "同步失败")
 		return
 	}
 

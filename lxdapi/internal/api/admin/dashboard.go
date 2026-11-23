@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"lxdapi/internal/db"
 	"lxdapi/models"
+	"lxdapi/pkg/logger"
 	"lxdapi/pkg/response"
 	"lxdapi/pkg/system"
 )
@@ -72,7 +73,8 @@ func GetDashboard(c *gin.Context) {
 func GetHostStats(c *gin.Context) {
 	stats, err := system.GetHostStats()
 	if err != nil {
-		response.Error(c, 500, "获取主机状态失败: "+err.Error())
+		logger.Error("获取主机状态失败: %v", err)
+		response.Error(c, 500, "获取主机状态失败")
 		return
 	}
 	

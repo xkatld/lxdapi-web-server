@@ -27,10 +27,94 @@ type LoginAttempt struct {
 }
 
 const (
-	maxAttempts = 5
-	lockDuration = 15 * time.Minute
-	resetDuration = 5 * time.Minute
+	maxAttempts           = 5
+	lockDuration          = 15 * time.Minute
+	resetDuration         = 5 * time.Minute
+	ADMIN_MAX_RATE_LIMIT  = 10000
 )
+
+func is_admin_attempt_expired(attempt *LoginAttempt, now time.Time) bool {
+	if !attempt.LockedUntil.IsZero() && now.Before(attempt.LockedUntil) {
+		return false
+	}
+	return now.Sub(attempt.LastAttempt) > resetDuration
+}
+
+func evict_admin_attempts_locked(now time.Time) {
+	if len(loginAttempts.attempts) < ADMIN_MAX_RATE_LIMIT {
+		return
+	}
+	for k, v := range loginAttempts.attempts {
+		if is_admin_attempt_expired(v, now) {
+			delete(loginAttempts.attempts, k)
+		}
+	}
+	if len(loginAttempts.attempts) < ADMIN_MAX_RATE_LIMIT {
+		return
+	}
+	oldest_key := ""
+	var oldest_time time.Time
+	for k, v := range loginAttempts.attempts {
+		if oldest_key == "" || v.LastAttempt.Before(oldest_time) {
+			oldest_key = k
+			oldest_time = v.LastAttempt
+		}
+	}
+	if oldest_key != "" {
+		delete(loginAttempts.attempts, oldest_key)
+	}
+}
+
+func check_admin_locked(client_ip string, now time.Time) (bool, int) {
+	loginAttempts.Lock()
+	defer loginAttempts.Unlock()
+	attempt, exists := loginAttempts.attempts[client_ip]
+	if !exists {
+		return false, 0
+	}
+	if !attempt.LockedUntil.IsZero() && now.Before(attempt.LockedUntil) {
+		remaining := int(attempt.LockedUntil.Sub(now).Minutes()) + 1
+		return true, remaining
+	}
+	if !attempt.LockedUntil.IsZero() && !now.Before(attempt.LockedUntil) {
+		attempt.Count = 0
+		attempt.LockedUntil = time.Time{}
+	}
+	if now.Sub(attempt.LastAttempt) > resetDuration {
+		delete(loginAttempts.attempts, client_ip)
+	}
+	return false, 0
+}
+
+func record_admin_failure(client_ip string, now time.Time) (bool, int) {
+	loginAttempts.Lock()
+	defer loginAttempts.Unlock()
+	attempt, exists := loginAttempts.attempts[client_ip]
+	if !exists {
+		evict_admin_attempts_locked(now)
+		attempt = &LoginAttempt{}
+		loginAttempts.attempts[client_ip] = attempt
+	} else if !attempt.LockedUntil.IsZero() && !now.Before(attempt.LockedUntil) {
+		attempt.Count = 0
+		attempt.LockedUntil = time.Time{}
+	}
+	if now.Sub(attempt.LastAttempt) > resetDuration {
+		attempt.Count = 0
+	}
+	attempt.Count++
+	attempt.LastAttempt = now
+	if attempt.Count >= maxAttempts {
+		attempt.LockedUntil = now.Add(lockDuration)
+		return true, int(lockDuration.Minutes())
+	}
+	return false, maxAttempts - attempt.Count
+}
+
+func reset_admin_attempts(client_ip string) {
+	loginAttempts.Lock()
+	defer loginAttempts.Unlock()
+	delete(loginAttempts.attempts, client_ip)
+}
 
 // GetCaptcha 获取验证码
 // @Summary 获取登录验证码
@@ -83,33 +167,12 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	clientIP := c.ClientIP()
-	
-	loginAttempts.Lock()
-	attempt, exists := loginAttempts.attempts[clientIP]
-	if !exists {
-		attempt = &LoginAttempt{}
-		loginAttempts.attempts[clientIP] = attempt
-	}
-	
+	client_ip := c.ClientIP()
 	now := time.Now()
-	
-	if !attempt.LockedUntil.IsZero() && now.Before(attempt.LockedUntil) {
-		remaining := int(attempt.LockedUntil.Sub(now).Minutes())
-		loginAttempts.Unlock()
-		response.Error(c, 429, fmt.Sprintf("登录已被锁定，请在%d分钟后重试", remaining+1))
+	if locked, remaining := check_admin_locked(client_ip, now); locked {
+		response.Error(c, 429, fmt.Sprintf("登录已被锁定，请在%d分钟后重试", remaining))
 		return
 	}
-	
-	if attempt.LockedUntil.Before(now) && !attempt.LockedUntil.IsZero() {
-		attempt.Count = 0
-		attempt.LockedUntil = time.Time{}
-	}
-	
-	if now.Sub(attempt.LastAttempt) > resetDuration {
-		attempt.Count = 0
-	}
-	loginAttempts.Unlock()
 
 	session := sessions.Default(c)
 	captchaID := session.Get("captcha_id")
@@ -127,25 +190,16 @@ func Login(c *gin.Context) {
 	session.Save()
 
 	if req.Username != core.GlobalConfig.Admin.Username || req.Password != core.GlobalConfig.Admin.Password {
-		loginAttempts.Lock()
-		attempt.Count++
-		attempt.LastAttempt = now
-		
-		if attempt.Count >= maxAttempts {
-			attempt.LockedUntil = now.Add(lockDuration)
-			loginAttempts.Unlock()
-			response.Error(c, 429, fmt.Sprintf("登录失败次数过多，账户已被锁定%d分钟", int(lockDuration.Minutes())))
+		locked, remaining_or_mins := record_admin_failure(client_ip, time.Now())
+		if locked {
+			response.Error(c, 429, fmt.Sprintf("登录失败次数过多，账户已被锁定%d分钟", remaining_or_mins))
 			return
 		}
-		loginAttempts.Unlock()
-		
-		response.Error(c, 401, fmt.Sprintf("用户名或密码错误，剩余尝试次数: %d", maxAttempts-attempt.Count))
+		response.Error(c, 401, fmt.Sprintf("用户名或密码错误，剩余尝试次数: %d", remaining_or_mins))
 		return
 	}
 
-	loginAttempts.Lock()
-	delete(loginAttempts.attempts, clientIP)
-	loginAttempts.Unlock()
+	reset_admin_attempts(client_ip)
 
 	session.Options(sessions.Options{
 		MaxAge:   86400,

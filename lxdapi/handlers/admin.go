@@ -5,7 +5,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"lxdapi/internal/console"
 	"lxdapi/internal/db"
-	"lxdapi/internal/service"
 	"lxdapi/models"
 	"lxdapi/pkg/utils"
 	"net/http"
@@ -23,19 +22,6 @@ func AdminLogout(c *gin.Context) {
 }
 
 func AdminDashboard(c *gin.Context) {
-	token := c.Query("token")
-	if token != "" {
-		accessToken, err := service.ValidateAccessToken(token)
-		if err == nil && accessToken.Type == "admin" {
-			session := sessions.Default(c)
-			session.Set("admin_logged_in", true)
-			session.Set("admin_username", accessToken.Target)
-			session.Save()
-			c.Redirect(http.StatusFound, "/admin/dashboard")
-			return
-		}
-	}
-
 	c.HTML(http.StatusOK, "admin/admin_dashboard.html", utils.MergeTemplateData(c, gin.H{
 		"title":    "仪表盘 - LXD API 管理",
 		"username": "admin",

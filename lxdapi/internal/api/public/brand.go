@@ -28,5 +28,5 @@ func GetBrandSettings(c *gin.Context) {
 		return
 	}
 	
-	response.Success(c, settings)
+	response.Success(c, settings.ToPublic())
 }

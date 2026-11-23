@@ -26,7 +26,7 @@ func GetTemplateList(c *gin.Context) {
 	templates, err := svc.List()
 	if err != nil {
 		logger.Error("获取模板列表失败: %v", err)
-		response.Error(c, 500, "获取模板列表失败: "+err.Error())
+		response.Error(c, 500, "获取模板列表失败")
 		return
 	}
 	
@@ -55,7 +55,7 @@ func SyncTemplates(c *gin.Context) {
 	added, updated, deleted, err := svc.SyncFromLXD(ctx)
 	if err != nil {
 		logger.Error("同步模板失败: %v", err)
-		response.Error(c, 500, "同步模板失败: "+err.Error())
+		response.Error(c, 500, "同步模板失败")
 		return
 	}
 	
@@ -90,7 +90,7 @@ func DeleteTemplate(c *gin.Context) {
 		
 		if err := svc.Delete(ctx, fingerprint); err != nil {
 			logger.Error("删除模板失败: %v", err)
-			response.Error(c, 500, "删除模板失败: "+err.Error())
+			response.Error(c, 500, "删除模板失败")
 			return
 		}
 		
@@ -106,7 +106,7 @@ func DeleteTemplate(c *gin.Context) {
 		
 		if err := svc.Delete(ctx, fp); err != nil {
 			logger.Error("删除模板失败: %v", err)
-			response.Error(c, 500, "删除模板失败: "+err.Error())
+			response.Error(c, 500, "删除模板失败")
 			return
 		}
 		
@@ -133,7 +133,7 @@ func DeleteTemplate(c *gin.Context) {
 func BatchDeleteTemplates(c *gin.Context) {
 	var req models.BatchDeleteTemplateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
 	
@@ -150,7 +150,7 @@ func BatchDeleteTemplates(c *gin.Context) {
 	success, failed, err := svc.BatchDelete(ctx, req.Fingerprints)
 	if err != nil {
 		logger.Error("批量删除模板失败: %v", err)
-		response.Error(c, 500, "批量删除模板失败: "+err.Error())
+		response.Error(c, 500, "批量删除模板失败")
 		return
 	}
 	
@@ -187,7 +187,7 @@ func SetTemplatePermission(c *gin.Context) {
 		AllowedUsers []string `json:"allowed_users"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Error(c, 400, "参数错误: "+err.Error())
+		response.Error(c, 400, "参数错误")
 		return
 	}
 

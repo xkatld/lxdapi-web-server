@@ -41,6 +41,9 @@ func (c *Client) ListStoragePools(ctx context.Context) ([]StoragePoolInfo, error
 }
 
 func (c *Client) GetStoragePoolResources(ctx context.Context, name string) (*StoragePoolResources, error) {
+	if err := ValidateStoragePoolName(name); err != nil {
+		return nil, err
+	}
 	output, err := c.exec(ctx, "query", "/1.0/storage-pools/"+name+"/resources")
 	if err != nil {
 		return nil, fmt.Errorf("获取存储池资源失败: %v", err)

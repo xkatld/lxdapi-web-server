@@ -9,7 +9,7 @@ import (
 )
 
 func generateContainerHash() (string, error) {
-	bytes := make([]byte, 8)
+	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}
