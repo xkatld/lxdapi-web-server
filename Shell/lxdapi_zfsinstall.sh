@@ -52,6 +52,16 @@ check_system() {
     log_ok "系统检测通过: $SYSTEM $SYS_ARCH"
 }
 
+run_apt_noninteractive() {
+    local apt_action=$1
+    shift
+    if [ "$apt_action" = "update" ]; then
+        DEBIAN_FRONTEND=noninteractive apt-get update -o DPkg::Lock::Timeout=60 "$@"
+        return $?
+    fi
+    DEBIAN_FRONTEND=noninteractive apt-get "$apt_action" -y -o DPkg::Lock::Timeout=60 -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" "$@"
+}
+
 check_and_update_kernel() {
     log_info "正在检测内核版本"
 
@@ -86,14 +96,28 @@ check_and_update_kernel() {
 
     log_info "开始更新系统内核"
 
-    apt-get update
+    if ! run_apt_noninteractive update; then
+        log_err "软件包索引更新失败"
+    fi
 
     local img_pkg="linux-image-$sys_arch"
     local headers_pkg="linux-headers-$sys_arch"
 
-    if apt-get install -y "$img_pkg" "$headers_pkg"; then
+    if run_apt_noninteractive install "$img_pkg" "$headers_pkg"; then
         log_info "正在卸载旧的 cloud 内核包"
-        dpkg -l | grep -E "linux-image-.*cloud|linux-headers-.*cloud" | awk '{print $2}' | xargs -r apt-get purge -y
+        local cloud_kernel_pkgs=()
+        mapfile -t cloud_kernel_pkgs < <(dpkg-query -W -f='${db:Status-Status}\t${Package}\n' 'linux-image-*cloud*' 'linux-headers-*cloud*' 2>/dev/null | awk -F'\t' '$1 == "installed" || $1 == "half-installed" || $1 == "half-configured" || $1 == "unpacked" {print $2}')
+
+        if [ ${#cloud_kernel_pkgs[@]} -gt 0 ]; then
+            if command -v debconf-set-selections >/dev/null 2>&1; then
+                if ! printf '%s\n' "linux-base linux-base/removing-running-kernel boolean false" | debconf-set-selections; then
+                    log_warn "debconf 预置失败，继续使用非交互模式执行卸载"
+                fi
+            fi
+            if ! run_apt_noninteractive purge "${cloud_kernel_pkgs[@]}"; then
+                log_err "旧 cloud 内核包卸载失败"
+            fi
+        fi
 
         log_info "正在清理旧内核文件"
         find /boot -maxdepth 1 -type f -name "vmlinuz-*cloud*" -delete
@@ -102,9 +126,13 @@ check_and_update_kernel() {
         find /boot -maxdepth 1 -type f -name "config-*cloud*" -delete
 
         log_info "正在清理无用软件包"
-        apt-get autoremove -y
+        if ! run_apt_noninteractive autoremove; then
+            log_err "无用软件包清理失败"
+        fi
 
-        update-grub
+        if ! update-grub; then
+            log_err "GRUB 引导更新失败"
+        fi
         log_ok "内核已更新为最新完整内核"
         log_warn "请手动执行 reboot 重启系统，重启后请重新运行该脚本"
         exit 0
@@ -128,15 +156,17 @@ install_zfs() {
     fi
 
     log_info "正在更新软件包索引"
-    apt-get update
+    if ! run_apt_noninteractive update; then
+        log_err "软件包索引更新失败"
+    fi
 
     log_info "正在安装当前内核头文件"
-    if ! apt-get install -y linux-headers-$current_kernel; then
+    if ! run_apt_noninteractive install "linux-headers-$current_kernel"; then
         log_err "内核头文件安装失败"
     fi
 
     log_info "正在安装 ZFS DKMS 模块和用户态工具"
-    if ! apt-get install -y zfs-dkms zfsutils-linux; then
+    if ! run_apt_noninteractive install zfs-dkms zfsutils-linux; then
         log_err "ZFS 软件包安装失败"
     fi
 
