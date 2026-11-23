@@ -174,10 +174,113 @@ configure_lxdapi() {
     	warn "Nginx 已禁用"
     	nginx_enabled_value="false"
     fi
-   
+
+    reading "是否启用 ACME 自动证书插件？ y/n [y]：" acme_enabled
+    acme_enabled=${acme_enabled:-y}
+    if [[ "$acme_enabled" =~ ^[yY]$ ]]; then
+        mkdir -p /var/www/html/.well-known/acme-challenge
+        chmod -R 755 /var/www/html
+        ok "ACME 验证目录已创建: /var/www/html"
+        acme_enabled_value="true"
+    else
+        warn "ACME 自动证书插件已禁用"
+        acme_enabled_value="false"
+    fi
+
+    if [[ "$nginx_enabled_value" == "true" ]]; then
+        mkdir -p /var/www/html/.well-known/acme-challenge
+        chmod -R 755 /var/www/html
+        if ! grep -rq "\.well-known/acme-challenge" /etc/nginx/nginx.conf /etc/nginx/conf.d/ /etc/nginx/sites-enabled/ /etc/nginx/sites-available/ 2>/dev/null; then
+            injected=0
+            target_nginx_conf=""
+            for candidate in /etc/nginx/sites-enabled/default /etc/nginx/sites-available/default /etc/nginx/conf.d/default.conf /etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf; do
+                if [ -f "$candidate" ] && grep -Eq 'listen[[:space:]]+([^;]*:)?80([[:space:];]|$)' "$candidate"; then
+                    target_nginx_conf="$candidate"
+                    break
+                fi
+            done
+            if [ -n "$target_nginx_conf" ]; then
+                tmp_nginx_conf=$(mktemp)
+                cp "$target_nginx_conf" "${target_nginx_conf}.bak"
+                awk '
+                    BEGIN { in_server=0; has_80=0; done=0; depth=0 }
+                    {
+                        line = $0
+                        if (!done && !in_server && line ~ /server[[:space:]]*\{/) {
+                            in_server = 1
+                            has_80 = 0
+                            depth = 0
+                        }
+                        if (in_server) {
+                            n_open = gsub(/\{/, "{", line)
+                            n_close = gsub(/\}/, "}", line)
+                            depth += n_open - n_close
+                            if (line ~ /listen[[:space:]]+([^;]*:)?80([[:space:];]|$)/) {
+                                has_80 = 1
+                            }
+                            if (has_80 && !done && depth <= 0) {
+                                print "    location ^~ /.well-known/acme-challenge/ {"
+                                print "        root /var/www/html;"
+                                print "        default_type \"text/plain\";"
+                                print "        allow all;"
+                                print "    }"
+                                done = 1
+                                in_server = 0
+                            }
+                        }
+                        print $0
+                    }
+                ' "$target_nginx_conf" > "$tmp_nginx_conf"
+                if [ -s "$tmp_nginx_conf" ]; then
+                    mv "$tmp_nginx_conf" "$target_nginx_conf"
+                    if nginx -t >/dev/null 2>&1; then
+                        rm -f "${target_nginx_conf}.bak"
+                        injected=1
+                    else
+                        mv "${target_nginx_conf}.bak" "$target_nginx_conf"
+                    fi
+                else
+                    rm -f "$tmp_nginx_conf" "${target_nginx_conf}.bak"
+                fi
+            fi
+            if [ "$injected" -eq 0 ]; then
+                if grep -rq "default_server" /etc/nginx/ 2>/dev/null; then
+                    listen_v4="listen 80;"
+                    listen_v6="listen [::]:80;"
+                else
+                    listen_v4="listen 80 default_server;"
+                    listen_v6="listen [::]:80 default_server;"
+                fi
+                cat > /etc/nginx/conf.d/acme-challenge.conf << EOF
+server {
+    $listen_v4
+    $listen_v6
+    server_name _;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/html;
+        default_type "text/plain";
+        allow all;
+    }
+
+    location / {
+        return 404;
+    }
+}
+EOF
+            fi
+        fi
+        if nginx -t >/dev/null 2>&1; then
+            systemctl reload nginx >/dev/null 2>&1
+            ok "Nginx 80 端口 ACME 验证规则已就绪"
+        else
+            warn "Nginx 配置校验未通过，请检查 /.well-known/acme-challenge/ 配置"
+        fi
+    fi
+
     task_backend="memory"
     db_type="sqlite"
-   
+
     info "写入配置文件..."
     sed -i "s|__SERVER_PORT__|$server_port|g" "$config_file"
     sed -i "s|__API_HASH__|$api_hash|g" "$config_file"
@@ -205,6 +308,7 @@ configure_lxdapi() {
     sed -i "s|__POSTGRES_DATABASE__|lxdapi|g" "$config_file"
     sed -i "s|__POSTGRES_SSLMODE__|disable|g" "$config_file"
     sed -i "s|__NGINX_ENABLED__|$nginx_enabled_value|g" "$config_file"
+    sed -i "s|__ACME_ENABLED__|$acme_enabled_value|g" "$config_file"
    
     ok "配置文件已更新 (已固定 SQLite & Memory 模式)"
    }
@@ -248,6 +352,7 @@ User=root
 WorkingDirectory=/opt/lxdapi
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 ExecStart=$exec_bin
+ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
 RestartSec=5
 StandardOutput=journal

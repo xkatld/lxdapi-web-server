@@ -102,11 +102,17 @@ type PostgresConfig struct {
 }
 
 type PluginsConfig struct {
-	Nginx PluginConfig `yaml:"nginx"`
+	Nginx PluginConfig     `yaml:"nginx"`
+	Acme  AcmePluginConfig `yaml:"acme"`
 }
 
 type PluginConfig struct {
 	Enabled bool `yaml:"enabled"`
+}
+
+type AcmePluginConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	CertDir string `yaml:"cert_dir"`
 }
 
 type AdminConfig struct {

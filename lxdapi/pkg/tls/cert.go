@@ -3,6 +3,7 @@ package tls
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	cryptotls "crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -11,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -50,31 +52,34 @@ func (cm *CertificateManager) CertificateExists() bool {
 	return true
 }
 
+func read_and_parse_cert(cert_file string) (*x509.Certificate, error) {
+	cert_pem, err := os.ReadFile(cert_file)
+	if err != nil {
+		return nil, fmt.Errorf("读取证书文件失败: %v", err)
+	}
+	block, _ := pem.Decode(cert_pem)
+	if block == nil {
+		return nil, fmt.Errorf("解析证书PEM失败")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("解析证书失败: %v", err)
+	}
+	return cert, nil
+}
+
 func (cm *CertificateManager) ValidateCertificate() bool {
 	if !cm.CertificateExists() {
 		return false
 	}
-	
-	certPEM, err := os.ReadFile(cm.certFile)
+	cert, err := read_and_parse_cert(cm.certFile)
 	if err != nil {
 		return false
 	}
-	
-	block, _ := pem.Decode(certPEM)
-	if block == nil {
-		return false
-	}
-	
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return false
-	}
-	
 	now := time.Now()
 	if now.Before(cert.NotBefore) || now.After(cert.NotAfter) {
 		return false
 	}
-	
 	return true
 }
 
@@ -170,20 +175,9 @@ func (cm *CertificateManager) GetCertificateInfo() (map[string]interface{}, erro
 	if !cm.CertificateExists() {
 		return nil, fmt.Errorf("证书文件不存在")
 	}
-	
-	certPEM, err := os.ReadFile(cm.certFile)
+	cert, err := read_and_parse_cert(cm.certFile)
 	if err != nil {
-		return nil, fmt.Errorf("读取证书文件失败: %v", err)
-	}
-	
-	block, _ := pem.Decode(certPEM)
-	if block == nil {
-		return nil, fmt.Errorf("解析证书PEM失败")
-	}
-	
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("解析证书失败: %v", err)
+		return nil, err
 	}
 	
 	info := map[string]interface{}{
@@ -201,5 +195,59 @@ func (cm *CertificateManager) GetCertificateInfo() (map[string]interface{}, erro
 	}
 	
 	return info, nil
+}
+
+type DynamicCertLoader struct {
+	mu   sync.RWMutex
+	cert *cryptotls.Certificate
+}
+
+var GlobalCertLoader = NewDynamicCertLoader()
+
+func NewDynamicCertLoader() *DynamicCertLoader {
+	return &DynamicCertLoader{}
+}
+
+func validate_tls_cert(tls_cert cryptotls.Certificate) error {
+	if len(tls_cert.Certificate) == 0 {
+		return fmt.Errorf("未找到有效的证书数据")
+	}
+	if _, err := x509.ParseCertificate(tls_cert.Certificate[0]); err != nil {
+		return fmt.Errorf("解析证书失败: %w", err)
+	}
+	return nil
+}
+
+func ValidateKeyPair(certPEM, keyPEM string) error {
+	tls_cert, err := cryptotls.X509KeyPair([]byte(certPEM), []byte(keyPEM))
+	if err != nil {
+		return fmt.Errorf("证书与私钥不匹配或格式无效: %w", err)
+	}
+	return validate_tls_cert(tls_cert)
+}
+
+func (d *DynamicCertLoader) LoadFromFile(certFile, keyFile string) error {
+	tls_cert, err := cryptotls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return fmt.Errorf("加载证书与私钥失败: %w", err)
+	}
+	if err := validate_tls_cert(tls_cert); err != nil {
+		return err
+	}
+
+	d.mu.Lock()
+	d.cert = &tls_cert
+	d.mu.Unlock()
+	return nil
+}
+
+func (d *DynamicCertLoader) GetCertificate(hello *cryptotls.ClientHelloInfo) (*cryptotls.Certificate, error) {
+	d.mu.RLock()
+	cert := d.cert
+	d.mu.RUnlock()
+	if cert == nil {
+		return nil, fmt.Errorf("尚未加载可用 TLS 证书")
+	}
+	return cert, nil
 }
 

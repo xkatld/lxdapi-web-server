@@ -109,4 +109,7 @@ plugins:
   # Nginx反向代理插件
   nginx:
     enabled: __NGINX_ENABLED__
+  acme:
+    enabled: __ACME_ENABLED__
+    cert_dir: "certs/acme"
 

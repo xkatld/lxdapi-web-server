@@ -164,6 +164,157 @@ download_latest() {
     ok "文件更新完成"
 }
 
+check_acme_config() {
+    info "检查配置文件中的 plugins.acme 配置节..."
+
+    if [ ! -f "$CONFIG_FILE" ]; then
+        warn "未找到配置文件: $CONFIG_FILE"
+        return
+    fi
+
+    if ! grep -Eq '^[[:space:]]*plugins:[[:space:]]*(\{\})?[[:space:]]*(#.*)?$' "$CONFIG_FILE"; then
+        if [ -s "$CONFIG_FILE" ] && [ -n "$(tail -c 1 "$CONFIG_FILE")" ]; then
+            printf '\n' >> "$CONFIG_FILE"
+        fi
+        cat >> "$CONFIG_FILE" << 'EOF'
+
+plugins:
+  acme:
+    enabled: false
+    cert_dir: "certs/acme"
+EOF
+        warn "检测到缺少 plugins 配置节，已自动补全 plugins.acme 默认配置"
+    else
+        local tmp_cfg
+        tmp_cfg=$(mktemp)
+        awk '
+            BEGIN {
+                in_plugins = 0
+                in_acme = 0
+                plugins_indent = ""
+                sub_indent = ""
+                acme_indent = ""
+                acme_sub_indent = ""
+                has_acme = 0
+                has_enabled = 0
+                has_cert_dir = 0
+                acme_inserted = 0
+            }
+            function indent_of(s,    m) {
+                match(s, /^[[:space:]]*/)
+                return substr(s, 1, RLENGTH)
+            }
+            function flush_acme_missing() {
+                if (in_acme) {
+                    if (acme_sub_indent == "") {
+                        acme_sub_indent = acme_indent "  "
+                    }
+                    if (!has_enabled) {
+                        print acme_sub_indent "enabled: false"
+                    }
+                    if (!has_cert_dir) {
+                        print acme_sub_indent "cert_dir: \"certs/acme\""
+                    }
+                    in_acme = 0
+                }
+            }
+            function flush_plugins_missing() {
+                flush_acme_missing()
+                if (in_plugins && !has_acme && !acme_inserted) {
+                    if (sub_indent == "") {
+                        sub_indent = plugins_indent "  "
+                    }
+                    print sub_indent "acme:"
+                    print sub_indent "  enabled: false"
+                    print sub_indent "  cert_dir: \"certs/acme\""
+                    acme_inserted = 1
+                }
+                in_plugins = 0
+            }
+            {
+                raw = $0
+                cur_indent = indent_of(raw)
+                if (raw ~ /^[[:space:]]*plugins:[[:space:]]*(\{\})?[[:space:]]*(#.*)?$/) {
+                    plugins_indent = cur_indent
+                    in_plugins = 1
+                    sub_indent = ""
+                    has_acme = 0
+                    acme_inserted = 0
+                    if (raw ~ /\{\}/) {
+                        sub(/\{\}/, "", raw)
+                        sub(/[[:space:]]+$/, "", raw)
+                    }
+                    print raw
+                    next
+                }
+                if (in_plugins) {
+                    if (raw !~ /^[[:space:]]*$/ && raw !~ /^[[:space:]]*#/ && length(cur_indent) <= length(plugins_indent)) {
+                        flush_plugins_missing()
+                    } else {
+                        if (raw !~ /^[[:space:]]*$/ && raw !~ /^[[:space:]]*#/) {
+                            if (sub_indent == "") {
+                                sub_indent = cur_indent
+                            }
+                            if (in_acme && length(cur_indent) <= length(acme_indent)) {
+                                flush_acme_missing()
+                            }
+                            if (!in_acme && length(cur_indent) == length(sub_indent) && raw ~ /^[[:space:]]*acme:[[:space:]]*(\{\})?[[:space:]]*(#.*)?$/) {
+                                has_acme = 1
+                                in_acme = 1
+                                acme_indent = cur_indent
+                                acme_sub_indent = ""
+                                has_enabled = 0
+                                has_cert_dir = 0
+                                if (raw ~ /\{\}/) {
+                                    sub(/\{\}/, "", raw)
+                                    sub(/[[:space:]]+$/, "", raw)
+                                }
+                                print raw
+                                next
+                            }
+                            if (in_acme && length(cur_indent) > length(acme_indent)) {
+                                if (acme_sub_indent == "") {
+                                    acme_sub_indent = cur_indent
+                                }
+                                if (raw ~ /^[[:space:]]*enabled:[[:space:]]*/) {
+                                    has_enabled = 1
+                                }
+                                if (raw ~ /^[[:space:]]*cert_dir:[[:space:]]*/) {
+                                    has_cert_dir = 1
+                                }
+                            }
+                        }
+                        print raw
+                        next
+                    }
+                }
+                print raw
+            }
+            END {
+                if (in_plugins) {
+                    flush_plugins_missing()
+                }
+            }
+        ' "$CONFIG_FILE" > "$tmp_cfg" && mv "$tmp_cfg" "$CONFIG_FILE"
+        ok "已检查并幂等补全配置文件中的 plugins.acme 配置节"
+    fi
+
+    if awk '
+        /^[[:space:]]*plugins:/ { in_plugins=1; p_ind=match($0, /[^[:space:]]/); next }
+        in_plugins && !/^[[:space:]]*$/ && !/^[[:space:]]*#/ && match($0, /[^[:space:]]/) <= p_ind { in_plugins=0; in_acme=0 }
+        in_plugins && /^[[:space:]]+acme:/ { in_acme=1; a_ind=match($0, /[^[:space:]]/); next }
+        in_acme && !/^[[:space:]]*$/ && !/^[[:space:]]*#/ && match($0, /[^[:space:]]/) <= a_ind { in_acme=0 }
+        in_acme && /^[[:space:]]+enabled:[[:space:]]*true/ { enabled=1 }
+        END { exit(enabled ? 0 : 1) }
+    ' "$CONFIG_FILE"; then
+        if [ ! -d "/var/www/html" ]; then
+            mkdir -p /var/www/html/.well-known/acme-challenge
+            chmod -R 755 /var/www/html
+            info "已自动创建 ACME 验证目录: /var/www/html"
+        fi
+    fi
+}
+
 start_service() {
     info "启动 $SERVICE_NAME 服务..."
     
@@ -244,6 +395,7 @@ main() {
     backup_files
     
     if download_latest; then
+        check_acme_config
         start_service
         show_result
     else

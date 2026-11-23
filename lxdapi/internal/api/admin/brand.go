@@ -61,7 +61,7 @@ func UpdateBrandSettings(c *gin.Context) {
 	reset := c.Query("reset")
 	if reset == "true" {
 		if err := brandService.ResetToDefault(); err != nil {
-			response.Error(c, 500, "重置失败")
+			response.Error(c, 500, "重置失败: "+err.Error())
 			return
 		}
 		
@@ -120,9 +120,16 @@ func UpdateBrandSettings(c *gin.Context) {
 		response.Error(c, 400, "页脚文本长度不能超过200字符")
 		return
 	}
-	
+
+	has_cert := strings.TrimSpace(req.TLSCertContent) != ""
+	has_key := strings.TrimSpace(req.TLSKeyContent) != ""
+	if has_cert != has_key {
+		response.Error(c, 400, "TLS证书与私钥必须同时提供或同时留空")
+		return
+	}
+
 	if err := brandService.UpdateSettings(&req); err != nil {
-		response.Error(c, 500, "更新品牌设置失败")
+		response.Error(c, 500, "更新品牌设置失败: "+err.Error())
 		return
 	}
 	

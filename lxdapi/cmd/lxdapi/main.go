@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	cryptotls "crypto/tls"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -36,11 +37,15 @@ import (
 	"lxdapi/pkg/response"
 	sysinfo "lxdapi/pkg/system"
 	tlsManager "lxdapi/pkg/tls"
+	"lxdapi/plugins/acme"
 	"lxdapi/plugins/nginx"
 	"lxdapi/plugins/opengfw"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"strings"
+	"syscall"
 )
 
 //go:embed templates docs static
@@ -107,6 +112,26 @@ func main() {
 		}
 	} else {
 		logger.Info("Nginx 插件已禁用，跳过注册")
+	}
+
+	var acmePlugin *acme.AcmePlugin
+	if cfg.Plugins.Acme.Enabled {
+		acmePlugin = acme.NewAcmePlugin(cfg.Plugins.Acme.CertDir)
+		acmePlugin.SetReloadCallback(func(certPath, keyPath string) error {
+			brand_svc := service.NewBrandService()
+			if brand_svc.HasValidCustomCert() {
+				logger.Info("检测到有效自定义证书，跳过 ACME 证书热加载覆盖")
+				return nil
+			}
+			return tlsManager.GlobalCertLoader.LoadFromFile(certPath, keyPath)
+		})
+		if err := pluginManager.Register(acmePlugin); err != nil {
+			logger.Error("注册 ACME 插件失败: %v", err)
+		} else {
+			logger.OK("ACME 插件注册成功")
+		}
+	} else {
+		logger.Info("ACME 插件已禁用，跳过注册")
 	}
 
 		
@@ -306,7 +331,11 @@ func main() {
 	logger.OK("模板加载完成")
 	
 	r.NoRoute(func(c *gin.Context) {
-		c.Redirect(302, "/")
+		if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			response.Error(c, http.StatusNotFound, "接口不存在")
+			return
+		}
+		c.Redirect(http.StatusFound, "/")
 	})
 
 	pluginManager.RegisterRoutes(r)
@@ -539,7 +568,7 @@ func main() {
 	addr := fmt.Sprintf("%s:%d", cfg.System.Server.Host, cfg.System.Server.Port)
 	
 	if cfg.System.Server.TLS.Enabled {
-		startWithTLS(r, addr, cfg)
+		startWithTLS(r, addr, cfg, acmePlugin)
 	} else {
 		logger.Info("服务启动 (HTTP)，监听: %s", addr)
 		if err := r.Run(addr); err != nil {
@@ -548,42 +577,99 @@ func main() {
 	}
 }
 
-func startWithTLS(r *gin.Engine, addr string, cfg *core.Config) {
-	tlsCfg := cfg.System.Server.TLS
-	certMgr := tlsManager.NewCertificateManager(tlsCfg.CertFile, tlsCfg.KeyFile)
-	
-	certFile := tlsCfg.CertFile
-	keyFile := tlsCfg.KeyFile
-	certSource := ""
+func load_tls_certificate(cfg *core.Config, acme_plugin *acme.AcmePlugin, brand_service *service.BrandService) (string, string, string, error) {
+	tls_cfg := cfg.System.Server.TLS
+	cert_mgr := tlsManager.NewCertificateManager(tls_cfg.CertFile, tls_cfg.KeyFile)
 
-	brandService := service.NewBrandService()
-	certContent, keyContent, err := brandService.LoadTLSCertificates()
-	
-	if err == nil && certContent != "" && keyContent != "" {
+	cert_content, key_content, err := brand_service.LoadTLSCertificates()
+	if err == nil && strings.TrimSpace(cert_content) != "" && strings.TrimSpace(key_content) != "" {
 		logger.Info("检测到Web后台配置的证书，优先使用...")
-		if err := brandService.SaveTLSCertificates(certContent, keyContent); err != nil {
-			logger.Error("写入Web配置的证书失败: %v", err)
+		if save_err := brand_service.SaveTLSCertificates(cert_content, key_content); save_err != nil {
+			logger.Error("写入Web配置的证书失败: %v", save_err)
 		} else {
-			certSource = "自定义"
 			logger.OK("已加载自定义证书")
+			return "自定义", tls_cfg.CertFile, tls_cfg.KeyFile, nil
 		}
 	}
-	
-	if certSource == "" && tlsCfg.AutoGenerate {
-		generateSelfSignedCert(certMgr)
-		certSource = "自签名"
+
+	if cfg.Plugins.Acme.Enabled && acme_plugin != nil {
+		logger.Info("尝试通过 ACME 插件自动签发/加载证书...")
+		if acme_err := acme_plugin.AutoIssueOnStartup(); acme_err != nil {
+			logger.Warn("ACME 证书自动签发/加载失败: %v", acme_err)
+		} else {
+			acme_cert, acme_key := acme_plugin.GetCertPaths()
+			if acme_cert == "" {
+				acme_cert = tls_cfg.CertFile
+			}
+			if acme_key == "" {
+				acme_key = tls_cfg.KeyFile
+			}
+			logger.OK("已加载 ACME 证书")
+			return "ACME", acme_cert, acme_key, nil
+		}
 	}
-	
-	if certSource == "" {
-		log.Fatalf("无可用证书，无法启动HTTPS服务")
+
+	if tls_cfg.AutoGenerate {
+		generateSelfSignedCert(cert_mgr)
+		if load_err := tlsManager.GlobalCertLoader.LoadFromFile(tls_cfg.CertFile, tls_cfg.KeyFile); load_err != nil {
+			logger.Error("加载自签名证书失败: %v", load_err)
+		} else {
+			return "自签名", tls_cfg.CertFile, tls_cfg.KeyFile, nil
+		}
 	}
-	
-	logger.Info("证书来源: %s", certSource)
+
+	if cert_mgr.CertificateExists() {
+		if load_err := tlsManager.GlobalCertLoader.LoadFromFile(tls_cfg.CertFile, tls_cfg.KeyFile); load_err == nil {
+			return "本地文件", tls_cfg.CertFile, tls_cfg.KeyFile, nil
+		}
+	}
+
+	return "", "", "", fmt.Errorf("无可用证书")
+}
+
+func startWithTLS(r *gin.Engine, addr string, cfg *core.Config, acmePlugin *acme.AcmePlugin) {
+	brand_service := service.NewBrandService()
+	cert_source, cert_file, key_file, err := load_tls_certificate(cfg, acmePlugin, brand_service)
+	if err != nil {
+		log.Fatalf("无可用证书，无法启动HTTPS服务: %v", err)
+	}
+
+	service.SetTLSFallbackReload(func() error {
+		source, c_file, k_file, reload_err := load_tls_certificate(cfg, acmePlugin, brand_service)
+		if reload_err != nil {
+			return reload_err
+		}
+		logger.OK("TLS 证书回退重载完成，来源: %s, 证书: %s, 私钥: %s", source, c_file, k_file)
+		return nil
+	})
+
+	sig_ch := make(chan os.Signal, 1)
+	signal.Notify(sig_ch, syscall.SIGHUP)
+	go func() {
+		for range sig_ch {
+			logger.Info("收到 SIGHUP 信号，开始热重载 TLS 证书...")
+			source, c_file, k_file, reload_err := load_tls_certificate(cfg, acmePlugin, brand_service)
+			if reload_err != nil {
+				logger.Error("SIGHUP 热重载 TLS 证书失败: %v", reload_err)
+			} else {
+				logger.OK("SIGHUP 热重载 TLS 证书成功，来源: %s, 证书: %s, 私钥: %s", source, c_file, k_file)
+			}
+		}
+	}()
+
+	logger.Info("证书来源: %s", cert_source)
 	logger.Info("服务启动 (HTTPS)，监听: %s", addr)
-	logger.Info("TLS证书: %s", certFile)
-	logger.Info("TLS私钥: %s", keyFile)
-	
-	if err := r.RunTLS(addr, certFile, keyFile); err != nil {
+	logger.Info("TLS证书: %s", cert_file)
+	logger.Info("TLS私钥: %s", key_file)
+
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: r,
+		TLSConfig: &cryptotls.Config{
+			GetCertificate: tlsManager.GlobalCertLoader.GetCertificate,
+		},
+	}
+	if err := srv.ListenAndServeTLS("", ""); err != nil {
 		logger.Error("HTTPS服务器启动失败: %v", err)
 	}
 }

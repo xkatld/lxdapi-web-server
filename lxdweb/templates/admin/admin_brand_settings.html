@@ -239,8 +239,8 @@
                             <span class="iconify" data-icon="mdi:certificate" data-width="18"></span>
                             HTTPS证书配置
                         </h3>
-                        <div class="text-xs text-gray-600 mb-3 p-2 bg-orange-50 border border-orange-200 rounded">
-                            <p class="text-orange-700 font-medium">修改证书后需要执行命令重启服务：systemctl restart lxdapi</p>
+                        <div class="text-xs text-gray-600 mb-3 p-2 bg-blue-50 border border-blue-200 rounded">
+                            <p class="text-blue-700 font-medium">支持证书热加载，保存或 ACME 签发/续签后自动生效，无需重启服务</p>
                         </div>
                         <div class="space-y-3">
                             <div>
@@ -250,6 +250,83 @@
                             <div>
                                 <label class="block text-xs font-medium text-gray-700 mb-1">SSL私钥内容 (server.key)</label>
                                 <textarea id="tlsKeyContent" rows="8" class="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono" placeholder="-----BEGIN PRIVATE KEY-----&#10;私钥内容...&#10;-----END PRIVATE KEY-----"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="content-box border border-gray-200 rounded-lg p-4 shadow-sm mb-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+                                <span class="iconify" data-icon="mdi:certificate-outline" data-width="18"></span>
+                                ACME 自动续签配置与状态
+                            </h3>
+                            <button type="button" id="refreshAcmeBtn" onclick="loadAcmePanel()" class="px-2.5 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50 text-gray-700">
+                                刷新状态
+                            </button>
+                        </div>
+
+                        <div id="acmeDisabledNotice" class="hidden text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded p-3 mb-3">
+                            ACME 自动证书插件未启用（后端返回 404），不影响上方品牌与手动证书配置的正常保存。
+                        </div>
+
+                        <div id="acmeFeedback" class="hidden text-xs rounded p-2.5 mb-3 border"></div>
+
+                        <div id="acmePanelBody">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-4 text-xs">
+                                <div class="p-2.5 bg-gray-50 border border-gray-200 rounded-lg">
+                                    <div class="text-gray-500 mb-1">自动续签状态</div>
+                                    <div id="acmeStatusEnabled" class="font-semibold text-gray-800">-</div>
+                                </div>
+                                <div class="p-2.5 bg-gray-50 border border-gray-200 rounded-lg">
+                                    <div class="text-gray-500 mb-1">acme.sh 安装状态</div>
+                                    <div id="acmeStatusInstalled" class="font-semibold text-gray-800">-</div>
+                                </div>
+                                <div class="p-2.5 bg-gray-50 border border-gray-200 rounded-lg">
+                                    <div class="text-gray-500 mb-1">证书到期时间</div>
+                                    <div id="acmeStatusExpires" class="font-semibold text-gray-800 break-all">-</div>
+                                </div>
+                                <div class="p-2.5 bg-gray-50 border border-gray-200 rounded-lg">
+                                    <div class="text-gray-500 mb-1">最近续签时间</div>
+                                    <div id="acmeStatusLastRenew" class="font-semibold text-gray-800 break-all">-</div>
+                                </div>
+                                <div class="p-2.5 bg-gray-50 border border-gray-200 rounded-lg">
+                                    <div class="text-gray-500 mb-1">最近错误</div>
+                                    <div id="acmeStatusLastError" class="font-semibold text-gray-800 break-all">无</div>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">服务器 IP / 域名 (server_ip)</label>
+                                    <input type="text" id="acmeServerIp" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="例如 1.2.3.4 或 example.com">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">通知邮箱 (email)</label>
+                                    <input type="email" id="acmeEmail" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="admin@example.com">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Webroot 验证目录 (webroot)</label>
+                                    <input type="text" id="acmeWebroot" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" value="/var/www/html" placeholder="/var/www/html">
+                                </div>
+                            </div>
+
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" id="acmeEnabled" class="toggle toggle-sm">
+                                    <span class="text-sm text-gray-700">启用 ACME 自动续签</span>
+                                </label>
+
+                                <div class="flex flex-wrap gap-2">
+                                    <button type="button" id="saveAcmeConfigBtn" onclick="saveAcmeConfig()" class="px-4 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                                        保存 ACME 配置
+                                    </button>
+                                    <button type="button" id="issueAcmeCertBtn" onclick="triggerAcmeAction('issue')" class="px-4 py-1.5 text-xs font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                                        立即签发证书
+                                    </button>
+                                    <button type="button" id="renewAcmeCertBtn" onclick="triggerAcmeAction('renew')" class="px-4 py-1.5 text-xs font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                                        立即续签证书
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -320,6 +397,7 @@
         $(document).ready(function() {
             loadTemplateOptions();
             loadSettings();
+            loadAcmePanel();
         });
 
         function loadTemplateOptions() {
@@ -391,6 +469,12 @@
 
         $('#brandForm').submit(function(e) {
             e.preventDefault();
+            const tlsCertContent = $('#tlsCertContent').val().trim();
+            const tlsKeyContent = $('#tlsKeyContent').val().trim();
+            if ((tlsCertContent && !tlsKeyContent) || (!tlsCertContent && tlsKeyContent)) {
+                alert('自定义 TLS 证书内容与私钥内容必须成对填写，或同时留空');
+                return;
+            }
             $.ajax({
                 url: '/api/admin/brand-settings',
                 type: 'POST',
@@ -423,20 +507,19 @@
                     use_local_cdn: $('#useLocalCDN').is(':checked'),
                     container_lite_template: $('#containerLiteTemplate').val().trim() || 'lite',
                     container_base_template: $('#containerBaseTemplate').val().trim() || 'base',
-                    tls_cert_content: $('#tlsCertContent').val().trim(),
-                    tls_key_content: $('#tlsKeyContent').val().trim()
+                    tls_cert_content: tlsCertContent,
+                    tls_key_content: tlsKeyContent
                 }),
                 success: function(result) {
                     if (result.code === 200) {
-                        const certContent = $('#tlsCertContent').val().trim();
-                        const keyContent = $('#tlsKeyContent').val().trim();
-                        
-                        if (certContent && keyContent) {
-                            alert('保存成功！证书已更新，请执行以下命令重启服务：\n\nsystemctl restart lxdapi');
+                        if (tlsCertContent && tlsKeyContent) {
+                            alert('保存成功！证书已更新并自动热加载生效，无需重启服务。');
                         } else {
                             alert('保存成功！');
                         }
-                        location.reload();
+                        loadAcmePanel().always(function() {
+                            location.reload();
+                        });
                     } else {
                         alert('保存失败: ' + (result.msg || '未知错误'));
                     }
@@ -451,7 +534,261 @@
                 type: 'POST',
                 success: function(result) {
                     alert(result.code === 200 ? '已恢复默认' : '重置失败');
-                    if (result.code === 200) location.reload();
+                    if (result.code === 200) {
+                        loadAcmePanel().always(function() {
+                            location.reload();
+                        });
+                    }
+                }
+            });
+        }
+
+        let acmeRequestBusy = false;
+
+        function extractApiData(result) {
+            if (!result) return null;
+            return result.data !== undefined ? result.data : result;
+        }
+
+        function extractErrorMessage(xhr, fallback) {
+            if (xhr && xhr.responseJSON) {
+                return xhr.responseJSON.msg || xhr.responseJSON.message || xhr.responseJSON.error || fallback;
+            }
+            if (xhr && xhr.responseText) {
+                try {
+                    const parsed = JSON.parse(xhr.responseText);
+                    return parsed.msg || parsed.message || parsed.error || fallback;
+                } catch (e) {
+                    return xhr.statusText || fallback;
+                }
+            }
+            return fallback;
+        }
+
+        function showAcmeFeedback(message, isError) {
+            const box = $('#acmeFeedback');
+            box.removeClass('hidden bg-red-50 border-red-200 text-red-700 bg-green-50 border-green-200 text-green-700');
+            if (isError) {
+                box.addClass('bg-red-50 border-red-200 text-red-700');
+            } else {
+                box.addClass('bg-green-50 border-green-200 text-green-700');
+            }
+            box.text(message);
+        }
+
+        function hideAcmeFeedback() {
+            $('#acmeFeedback').addClass('hidden').text('');
+        }
+
+        function setAcmeDisabledState() {
+            $('#acmeDisabledNotice').removeClass('hidden');
+            $('#acmePanelBody').addClass('hidden');
+            hideAcmeFeedback();
+        }
+
+        function setAcmeButtonsDisabled(disabled, activeBtnId, loadingText) {
+            acmeRequestBusy = disabled;
+            const buttons = [
+                { id: '#saveAcmeConfigBtn', text: '保存 ACME 配置' },
+                { id: '#issueAcmeCertBtn', text: '立即签发证书' },
+                { id: '#renewAcmeCertBtn', text: '立即续签证书' }
+            ];
+            buttons.forEach(function(item) {
+                const btn = $(item.id);
+                btn.prop('disabled', disabled);
+                if (disabled && item.id === activeBtnId && loadingText) {
+                    btn.text(loadingText);
+                } else {
+                    btn.text(item.text);
+                }
+            });
+        }
+
+        function handleAcmeError(xhr, actionLabel, showPanelOnError) {
+            if (xhr && xhr.status === 401) {
+                window.location.href = '/admin/login';
+                return;
+            }
+            if (xhr && xhr.status === 404) {
+                setAcmeDisabledState();
+                return;
+            }
+            if (showPanelOnError) {
+                $('#acmeDisabledNotice').addClass('hidden');
+                $('#acmePanelBody').removeClass('hidden');
+            }
+            showAcmeFeedback(actionLabel + '失败：' + extractErrorMessage(xhr, '请求失败'), true);
+        }
+
+        function validateAcmePayload(requireFields) {
+            const serverIp = $('#acmeServerIp').val().trim();
+            const email = $('#acmeEmail').val().trim();
+            const webroot = $('#acmeWebroot').val().trim() || '/var/www/html';
+
+            if (requireFields && !serverIp) {
+                showAcmeFeedback('请填写服务器 IP 或域名', true);
+                return null;
+            }
+            if (serverIp && (/[\\/\s]/.test(serverIp) || !/^([0-9a-fA-F:.]+|[a-zA-Z0-9.-]+)$/.test(serverIp))) {
+                showAcmeFeedback('服务器 IP 或域名格式不正确', true);
+                return null;
+            }
+            if (requireFields && !email) {
+                showAcmeFeedback('请填写邮箱地址', true);
+                return null;
+            }
+            if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                showAcmeFeedback('邮箱格式不正确', true);
+                return null;
+            }
+            if (!webroot.startsWith('/') || /\s/.test(webroot) || webroot.includes('..')) {
+                showAcmeFeedback('Webroot 路径必须为有效的绝对路径', true);
+                return null;
+            }
+
+            return {
+                server_ip: serverIp,
+                email: email,
+                webroot: webroot
+            };
+        }
+
+        function renderAcmeStatus(data) {
+            if (!data) return;
+            const enabled = data.plugin_enabled !== undefined ? Boolean(data.plugin_enabled) : Boolean(data.enabled);
+            const installed = data.installed !== undefined ? Boolean(data.installed) : Boolean(data.acme_sh_installed);
+            const expiresAt = data.expires_at || data.cert_expires_at || data.not_after || '-';
+            const lastRenewAt = data.last_renewed || data.last_renew_at || data.last_renewed_at || data.renewed_at || '-';
+            const lastError = data.last_error || data.error || '';
+
+            $('#acmeStatusEnabled')
+                .text(enabled ? '已启用' : '未启用')
+                .removeClass('text-green-700 text-gray-500 text-gray-800')
+                .addClass(enabled ? 'text-green-700' : 'text-gray-500');
+            $('#acmeStatusInstalled')
+                .text(installed ? '已安装' : '未安装')
+                .removeClass('text-green-700 text-amber-700 text-gray-800')
+                .addClass(installed ? 'text-green-700' : 'text-amber-700');
+            $('#acmeStatusExpires').text(expiresAt);
+            $('#acmeStatusLastRenew').text(lastRenewAt);
+            $('#acmeStatusLastError')
+                .text(lastError || '无')
+                .removeClass('text-red-600 text-gray-800')
+                .addClass(lastError ? 'text-red-600' : 'text-gray-800');
+        }
+
+        function renderAcmeConfig(data) {
+            if (!data) return;
+            $('#acmeEnabled').prop('checked', Boolean(data.enabled));
+            $('#acmeServerIp').val(data.server_ip || '');
+            $('#acmeEmail').val(data.email || '');
+            $('#acmeWebroot').val(data.webroot || '/var/www/html');
+        }
+
+        function loadAcmePanel() {
+            const statusReq = $.ajax({ url: '/api/admin/acme/status', type: 'GET' });
+            const configReq = $.ajax({ url: '/api/admin/acme/config', type: 'GET' });
+
+            return $.when(statusReq, configReq).done(function(statusRes, configRes) {
+                const statusJson = statusRes[0];
+                const configJson = configRes[0];
+                if ((statusJson && statusJson.code === 401) || (configJson && configJson.code === 401)) {
+                    window.location.href = '/admin/login';
+                    return;
+                }
+                if ((statusJson && statusJson.code === 404) || (configJson && configJson.code === 404)) {
+                    setAcmeDisabledState();
+                    return;
+                }
+                $('#acmeDisabledNotice').addClass('hidden');
+                $('#acmePanelBody').removeClass('hidden');
+                if (statusJson && (statusJson.code === undefined || statusJson.code === 200)) {
+                    renderAcmeStatus(extractApiData(statusJson));
+                }
+                if (configJson && (configJson.code === undefined || configJson.code === 200)) {
+                    renderAcmeConfig(extractApiData(configJson));
+                }
+            }).fail(function(xhr) {
+                handleAcmeError(xhr, '加载 ACME 状态或配置', true);
+            });
+        }
+
+        function saveAcmeConfig() {
+            if (acmeRequestBusy) return;
+            hideAcmeFeedback();
+
+            const validated = validateAcmePayload(false);
+            if (!validated) return;
+
+            const payload = {
+                enabled: $('#acmeEnabled').is(':checked'),
+                server_ip: validated.server_ip,
+                email: validated.email,
+                webroot: validated.webroot
+            };
+
+            setAcmeButtonsDisabled(true, '#saveAcmeConfigBtn', '保存中...');
+            $.ajax({
+                url: '/api/admin/acme/config',
+                type: 'PUT',
+                contentType: 'application/json',
+                data: JSON.stringify(payload),
+                success: function(result) {
+                    if (result && result.code === 401) {
+                        window.location.href = '/admin/login';
+                        return;
+                    }
+                    if (result && result.code !== undefined && result.code !== 200) {
+                        showAcmeFeedback('保存 ACME 配置失败：' + (result.msg || result.message || '未知错误'), true);
+                        return;
+                    }
+                    showAcmeFeedback('ACME 配置已保存', false);
+                    loadAcmePanel();
+                },
+                error: function(xhr) {
+                    handleAcmeError(xhr, '保存 ACME 配置', false);
+                },
+                complete: function() {
+                    setAcmeButtonsDisabled(false);
+                }
+            });
+        }
+
+        function triggerAcmeAction(action) {
+            if (acmeRequestBusy) return;
+            hideAcmeFeedback();
+
+            const validated = validateAcmePayload(true);
+            if (!validated) return;
+
+            const isIssue = action === 'issue';
+            const btnId = isIssue ? '#issueAcmeCertBtn' : '#renewAcmeCertBtn';
+            const loadingText = isIssue ? '签发中...' : '续签中...';
+            const actionLabel = isIssue ? '签发证书' : '续签证书';
+
+            setAcmeButtonsDisabled(true, btnId, loadingText);
+            $.ajax({
+                url: isIssue ? '/api/admin/acme/issue' : '/api/admin/acme/renew',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(validated),
+                success: function(result) {
+                    if (result && result.code === 401) {
+                        window.location.href = '/admin/login';
+                        return;
+                    }
+                    if (result && result.code !== undefined && result.code !== 200) {
+                        showAcmeFeedback(actionLabel + '失败：' + (result.msg || result.message || '未知错误'), true);
+                        return;
+                    }
+                    showAcmeFeedback(actionLabel + '成功，证书已热加载生效', false);
+                    loadAcmePanel();
+                },
+                error: function(xhr) {
+                    handleAcmeError(xhr, actionLabel, false);
+                },
+                complete: function() {
+                    setAcmeButtonsDisabled(false);
                 }
             });
         }
