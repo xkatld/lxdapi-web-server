@@ -252,12 +252,14 @@ func UpdateUser(userID string, updates map[string]interface{}) error {
 			if statusStr == "disabled" {
 				for _, c := range containers {
 					if c.Status == "running" {
-						containerService.Pause(ctx, c.Name)
+						containerService.PauseWithSource(ctx, c.Name, "system")
+					} else if c.Status == "frozen" && c.FreezeSource == "user" {
+						db.DB.Model(&models.Container{}).Where("name = ?", c.Name).Update("freeze_source", "system")
 					}
 				}
 			} else if statusStr == "active" && oldStatus == "disabled" {
 				for _, c := range containers {
-					if c.Status == "frozen" {
+					if c.Status == "frozen" && c.FreezeSource == "system" {
 						containerService.Resume(ctx, c.Name)
 					}
 				}

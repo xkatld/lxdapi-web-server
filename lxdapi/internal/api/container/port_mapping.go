@@ -70,6 +70,11 @@ func AllocatePortMapping(c *gin.Context) {
 		return
 	}
 
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(&container, false, "allocate_port_mapping"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
+		return
+	}
+
 	pmService := service.NewPortMappingService()
 
 	// 如果公网端口为0，随机分配
@@ -298,6 +303,11 @@ func ReleasePortMapping(c *gin.Context) {
 		return
 	}
 	containerName := containerNameVal.(string)
+
+	if deny_code, deny_msg := service.CheckContainerOperationByName(containerName, false, "release_port_mapping"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
+		return
+	}
 
 	pmService := service.NewPortMappingService()
 

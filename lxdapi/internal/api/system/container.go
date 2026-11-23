@@ -247,7 +247,7 @@ func ContainerAction(c *gin.Context) {
 
 	case "pause":
 		err := executor.CreateSyncTask(name, "pause", userID, func(ctx context.Context) error {
-			return containerService.Pause(ctx, name)
+			return containerService.PauseWithSource(ctx, name, "system")
 		})
 		if err != nil {
 			response.Error(c, 500, err.Error())

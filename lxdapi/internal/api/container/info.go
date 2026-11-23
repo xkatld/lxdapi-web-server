@@ -43,8 +43,10 @@ func GetInfo(c *gin.Context) {
 	if err != nil {
 		logger.Warn("获取容器详细信息失败，返回基本信息: %v", err)
 		info = map[string]interface{}{
-			"name":   name,
-			"status": container.Status,
+			"name":           name,
+			"status":         container.Status,
+			"freeze_source":  container.FreezeSource,
+			"traffic_locked": service.IsContainerTrafficLocked(container),
 		}
 	}
 
@@ -109,6 +111,11 @@ func Action(c *gin.Context) {
 	var dbContainer models.Container
 	if err := db.DB.Where("name = ?", name).First(&dbContainer).Error; err != nil {
 		response.Error(c, 404, "容器不存在")
+		return
+	}
+
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(&dbContainer, false, action); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
 		return
 	}
 
@@ -289,6 +296,11 @@ func AllocateIP(c *gin.Context) {
 		return
 	}
 
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(&container, false, "allocate_ip"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
+		return
+	}
+
 	ctx := context.Background()
 
 	if version == "v4" {
@@ -357,6 +369,11 @@ func ReleaseIP(c *gin.Context) {
 		return
 	}
 
+	if deny_code, deny_msg := service.CheckContainerOperationByName(name, false, "release_ip"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
+		return
+	}
+
 	var req struct {
 		IP string `json:"ip" binding:"required"`
 	}
@@ -415,6 +432,11 @@ func GetDNS(c *gin.Context) {
 func SetDNS(c *gin.Context) {
 	name, _ := c.Get("container_name")
 	containerName := name.(string)
+
+	if deny_code, deny_msg := service.CheckContainerOperationByName(containerName, false, "set_dns"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
+		return
+	}
 	
 	var req struct {
 		DNS []string `json:"dns" binding:"required"`

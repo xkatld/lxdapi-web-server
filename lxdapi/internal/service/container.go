@@ -301,7 +301,10 @@ func (s *ContainerService) Start(ctx context.Context, name string) error {
 	if err := s.lxcClient.StartContainer(ctx, name); err != nil {
 		return err
 	}
-	db.DB.Model(&models.Container{}).Where("name = ?", name).Update("status", "running")
+	db.DB.Model(&models.Container{}).Where("name = ?", name).Updates(map[string]interface{}{
+		"status":        "running",
+		"freeze_source": "",
+	})
 	cache.RefreshContainerCache(ctx, name)
 	return nil
 }
@@ -310,7 +313,10 @@ func (s *ContainerService) Stop(ctx context.Context, name string) error {
 	if err := s.lxcClient.StopContainer(ctx, name); err != nil {
 		return err
 	}
-	db.DB.Model(&models.Container{}).Where("name = ?", name).Update("status", "stopped")
+	db.DB.Model(&models.Container{}).Where("name = ?", name).Updates(map[string]interface{}{
+		"status":        "stopped",
+		"freeze_source": "",
+	})
 	cache.RefreshContainerCache(ctx, name)
 	return nil
 }
@@ -319,16 +325,26 @@ func (s *ContainerService) Restart(ctx context.Context, name string) error {
 	if err := s.lxcClient.RestartContainer(ctx, name); err != nil {
 		return err
 	}
-	db.DB.Model(&models.Container{}).Where("name = ?", name).Update("status", "running")
+	db.DB.Model(&models.Container{}).Where("name = ?", name).Updates(map[string]interface{}{
+		"status":        "running",
+		"freeze_source": "",
+	})
 	cache.RefreshContainerCache(ctx, name)
 	return nil
 }
 
 func (s *ContainerService) Pause(ctx context.Context, name string) error {
+	return s.PauseWithSource(ctx, name, "admin")
+}
+
+func (s *ContainerService) PauseWithSource(ctx context.Context, name, source string) error {
 	if err := s.lxcClient.PauseContainer(ctx, name); err != nil {
 		return err
 	}
-	db.DB.Model(&models.Container{}).Where("name = ?", name).Update("status", "frozen")
+	db.DB.Model(&models.Container{}).Where("name = ?", name).Updates(map[string]interface{}{
+		"status":        "frozen",
+		"freeze_source": source,
+	})
 	cache.RefreshContainerCache(ctx, name)
 	return nil
 }
@@ -337,9 +353,50 @@ func (s *ContainerService) Resume(ctx context.Context, name string) error {
 	if err := s.lxcClient.ResumeContainer(ctx, name); err != nil {
 		return err
 	}
-	db.DB.Model(&models.Container{}).Where("name = ?", name).Update("status", "running")
+	db.DB.Model(&models.Container{}).Where("name = ?", name).Updates(map[string]interface{}{
+		"status":        "running",
+		"freeze_source": "",
+	})
 	cache.RefreshContainerCache(ctx, name)
 	return nil
+}
+
+func IsContainerTrafficLocked(container *models.Container) bool {
+	if container == nil {
+		return false
+	}
+	locked, _ := cache.CheckContainerTrafficLock(*container)
+	return locked
+}
+
+func CheckContainerOperationAllowed(container *models.Container, is_user_portal bool, action string) (int, string) {
+	if container == nil {
+		return 404, "容器不存在"
+	}
+	if locked, msg := cache.CheckContainerTrafficLock(*container); locked {
+		return 403, msg
+	}
+	if strings.ToLower(container.Status) == "frozen" {
+		if container.FreezeSource == "user" {
+			if is_user_portal && action == "unsuspend" {
+				return 0, ""
+			}
+			return 403, "容器已暂停，请先恢复运行后再执行此操作"
+		}
+		if container.FreezeSource == "system" {
+			return 403, "容器已被系统冻结，请联系管理员处理"
+		}
+		return 403, "容器已被管理员冻结，请联系管理员解冻"
+	}
+	return 0, ""
+}
+
+func CheckContainerOperationByName(name string, is_user_portal bool, action string) (int, string) {
+	var container models.Container
+	if err := db.DB.Where("name = ?", name).First(&container).Error; err != nil {
+		return 404, "容器不存在"
+	}
+	return CheckContainerOperationAllowed(&container, is_user_portal, action)
 }
 
 func (s *ContainerService) Reinstall(ctx context.Context, name, image, password string) error {
@@ -455,8 +512,9 @@ func (s *ContainerService) Reinstall(ctx context.Context, name, image, password 
 	actualPrivateIPv6 := s.getContainerIPv6(ctx, name)
 	
 	updateFields := map[string]interface{}{
-		"image":  imageAlias,
-		"status": "running",
+		"image":         imageAlias,
+		"status":        "running",
+		"freeze_source": "",
 	}
 	
 	if actualPrivateIP != "" {
@@ -585,6 +643,9 @@ func (s *ContainerService) List(userID string) ([]models.Container, error) {
 	if err := query.Find(&containers).Error; err != nil {
 		return nil, err
 	}
+	for i := range containers {
+		containers[i].TrafficLocked = IsContainerTrafficLocked(&containers[i])
+	}
 	return containers, nil
 }
 
@@ -596,6 +657,9 @@ func ListContainersByUser(userID string) ([]models.Container, error) {
 	}
 	if err := query.Find(&containers).Error; err != nil {
 		return nil, err
+	}
+	for i := range containers {
+		containers[i].TrafficLocked = IsContainerTrafficLocked(&containers[i])
 	}
 	return containers, nil
 }
@@ -632,9 +696,11 @@ func (s *ContainerService) GetInfo(ctx context.Context, name string) (map[string
 	}
 
 	result := map[string]interface{}{
-		"name":               name,
-		"status":             info.Status,
-		"image":              container.Image,
+		"name":                name,
+		"status":              info.Status,
+		"freeze_source":       container.FreezeSource,
+		"traffic_locked":      IsContainerTrafficLocked(&container),
+		"image":               container.Image,
 		"password":           container.Password,
 		"cpu":                0,
 		"memory":             "",

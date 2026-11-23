@@ -484,18 +484,41 @@
             }
         }
 
+        function getAdminContainerStatusBadge(c) {
+            const status = (c.status || '').toLowerCase();
+            const freezeSource = (c.freeze_source || '').toLowerCase();
+            const trafficLocked = !!c.traffic_locked;
+            let badge = '';
+            if (status === 'running') {
+                badge = '<span class="px-2 py-0.5 text-xs font-medium text-green-700 bg-green-100 rounded-full flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>在线</span>';
+            } else if (status === 'stopped') {
+                badge = '<span class="px-2 py-0.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-full">离线</span>';
+            } else if (status === 'frozen') {
+                if (trafficLocked) {
+                    badge = '<span class="px-2 py-0.5 text-xs font-medium text-red-700 bg-red-100 rounded-full">已冻结（流量锁定）</span>';
+                } else if (freezeSource === 'admin') {
+                    badge = '<span class="px-2 py-0.5 text-xs font-medium text-red-700 bg-red-100 rounded-full">已冻结（管理员）</span>';
+                } else if (freezeSource === 'system') {
+                    badge = '<span class="px-2 py-0.5 text-xs font-medium text-red-700 bg-red-100 rounded-full">已冻结（系统）</span>';
+                } else {
+                    badge = '<span class="px-2 py-0.5 text-xs font-medium text-yellow-700 bg-yellow-100 rounded-full">已暂停</span>';
+                }
+            } else {
+                badge = '<span class="px-2 py-0.5 text-xs font-medium text-yellow-700 bg-yellow-100 rounded-full">其他</span>';
+            }
+            if (trafficLocked && status !== 'frozen') {
+                badge += '<span class="ml-1 px-2 py-0.5 text-xs font-medium text-red-700 bg-red-100 rounded-full">流量锁定</span>';
+            }
+            return badge;
+        }
+
         function renderCardView() {
             let dataToRender = getPageData();
             
             let html = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">';
             
             dataToRender.forEach(c => {
-                const status = (c.status || '').toLowerCase();
-                const statusBadge = status === 'running' ? 
-                    '<span class="px-2 py-0.5 text-xs font-medium text-green-700 bg-green-100 rounded-full flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>在线</span>' : 
-                    status === 'stopped' ?
-                    '<span class="px-2 py-0.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-full">离线</span>' :
-                    '<span class="px-2 py-0.5 text-xs font-medium text-yellow-700 bg-yellow-100 rounded-full">其他</span>';
+                const statusBadge = getAdminContainerStatusBadge(c);
                 
 
                 const memoryUsedMB = c.memory_usage_raw ? parseFloat(c.memory_usage_raw) / 1024 / 1024 : 0;
@@ -591,12 +614,7 @@
             let dataToRender = getPageData();
             
             dataToRender.forEach(c => {
-                const status = (c.status || '').toLowerCase();
-                const statusBadge = status === 'running' ? 
-                    '<span class="px-2 py-0.5 text-xs font-medium text-green-700 bg-green-100 rounded-full flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>在线</span>' : 
-                    status === 'stopped' ?
-                    '<span class="px-2 py-0.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-full">离线</span>' :
-                    '<span class="px-2 py-0.5 text-xs font-medium text-yellow-700 bg-yellow-100 rounded-full">其他</span>';
+                const statusBadge = getAdminContainerStatusBadge(c);
 
 
                 const memoryUsedMB = c.memory_usage_raw ? parseFloat(c.memory_usage_raw) / 1024 / 1024 : 0;

@@ -77,6 +77,11 @@ func AllocatePortMapping(c *gin.Context) {
 		return
 	}
 
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(&container, true, "allocate_port_mapping"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
+		return
+	}
+
 	pmService := service.NewPortMappingService()
 
 	// 如果公网端口为0，随机分配
@@ -327,6 +332,10 @@ func ReleasePortMapping(c *gin.Context) {
 				response.Error(c, 403, "无权限删除其他用户的端口映射")
 				return
 			}
+			if deny_code, deny_msg := service.CheckContainerOperationByName(m.ContainerName, true, "release_port_mapping"); deny_code != 0 {
+				response.Error(c, deny_code, deny_msg)
+				return
+			}
 		}
 
 		for _, mapping := range mappings {
@@ -351,6 +360,10 @@ func ReleasePortMapping(c *gin.Context) {
 		for _, m := range mappings {
 			if m.UserID != username {
 				response.Error(c, 403, "无权限删除其他用户的端口映射")
+				return
+			}
+			if deny_code, deny_msg := service.CheckContainerOperationByName(m.ContainerName, true, "release_port_mapping"); deny_code != 0 {
+				response.Error(c, deny_code, deny_msg)
 				return
 			}
 		}

@@ -17,6 +17,8 @@ import (
 type ContainerCacheJSON struct {
 	Name            string                 `json:"name"`
 	Status          string                 `json:"status"`
+	FreezeSource    string                 `json:"freeze_source"`
+	TrafficLocked   bool                   `json:"traffic_locked"`
 	Image           string                 `json:"image"`
 	CPU             int                    `json:"cpu"`
 	Memory          string                 `json:"memory"`
@@ -41,11 +43,32 @@ func GetAllContainersCache() []ContainerCacheJSON {
 	var containers []models.Container
 	db.DB.Find(&containers)
 
+	var traffics []models.Traffic
+	db.DB.Find(&traffics)
+	traffic_locked_map := make(map[string]bool, len(traffics))
+	for _, t := range traffics {
+		if t.Locked {
+			traffic_locked_map[t.ContainerName] = true
+		}
+	}
+
+	var users []models.User
+	db.DB.Find(&users)
+	user_locked_map := make(map[string]bool, len(users))
+	for _, u := range users {
+		if u.TrafficLocked {
+			user_locked_map[u.Username] = true
+		}
+	}
+
 	result := make([]ContainerCacheJSON, 0, len(containers))
 	for _, c := range containers {
+		traffic_locked := traffic_locked_map[c.Name] || user_locked_map[c.UserID]
 		cacheData := ContainerCacheJSON{
 			Name:            c.Name,
 			Status:          c.Status,
+			FreezeSource:    c.FreezeSource,
+			TrafficLocked:   traffic_locked,
 			Image:           c.Image,
 			CPU:             c.CPU,
 			Memory:          formatMBToString(c.Memory),
@@ -85,9 +108,13 @@ func GetContainerCache(name string) (*ContainerCacheJSON, bool) {
 		return nil, false
 	}
 
+	traffic_locked, _ := CheckContainerTrafficLock(container)
+
 	cacheData := &ContainerCacheJSON{
 		Name:            container.Name,
 		Status:          container.Status,
+		FreezeSource:    container.FreezeSource,
+		TrafficLocked:   traffic_locked,
 		Image:           container.Image,
 		CPU:             container.CPU,
 		Memory:          formatMBToString(container.Memory),
@@ -119,6 +146,20 @@ func GetContainerCache(name string) (*ContainerCacheJSON, bool) {
 }
 
 func DeleteContainerCache(name string) {
+}
+
+func CheckContainerTrafficLock(container models.Container) (bool, string) {
+	var traffic models.Traffic
+	if err := db.DB.Where("container_name = ?", container.Name).First(&traffic).Error; err == nil && traffic.Locked {
+		return true, "容器流量已超限并被锁定，无法执行此操作"
+	}
+	if container.UserID != "" {
+		var user models.User
+		if err := db.DB.Where("username = ?", container.UserID).First(&user).Error; err == nil && user.TrafficLocked {
+			return true, "用户流量已超限并被锁定，无法执行此操作"
+		}
+	}
+	return false, ""
 }
 
 func RefreshAllContainersCache(ctx context.Context) (int, int, error) {
@@ -159,6 +200,9 @@ func RefreshContainerCache(ctx context.Context, name string) error {
 	}
 
 	container.Status = strings.ToLower(info.Status)
+	if container.Status != "frozen" {
+		container.FreezeSource = ""
+	}
 	container.LastSync = time.Now().Format(time.RFC3339)
 	container.CreatedAtLXD = info.Created
 

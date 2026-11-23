@@ -202,6 +202,11 @@ func DeleteContainer(c *gin.Context) {
 		return
 	}
 
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(container, true, "delete"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
+		return
+	}
+
 	params := map[string]interface{}{
 		"container_name": name,
 		"user_id":        container.UserID,
@@ -338,6 +343,11 @@ func ContainerAction(c *gin.Context) {
 		return
 	}
 
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(container, true, action); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
+		return
+	}
+
 	switch action {
 	case "start":
 		if err := executor.CreateSyncTask(name, "start", container.UserID, func(ctx context.Context) error {
@@ -428,7 +438,7 @@ func ContainerAction(c *gin.Context) {
 
 	case "suspend":
 		if err := executor.CreateSyncTask(name, "suspend", container.UserID, func(ctx context.Context) error {
-			return containerService.Pause(ctx, name)
+			return containerService.PauseWithSource(ctx, name, "user")
 		}); err != nil {
 			logger.Error("暂停容器失败: %v", err)
 			response.Error(c, 500, err.Error())
@@ -538,6 +548,11 @@ func UpdateContainerConfig(c *gin.Context) {
 
 	if container.UserID != username.(string) {
 		response.Error(c, 403, "无权操作该容器")
+		return
+	}
+
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(container, true, "update_config"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
 		return
 	}
 
@@ -835,6 +850,11 @@ func RegenerateContainerCredential(c *gin.Context) {
 		return
 	}
 
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(container, true, "regenerate_credential"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
+		return
+	}
+
 	cred, err := service.RegenerateContainerHash(name)
 	if err != nil {
 		logger.Error("重新生成容器Hash失败: %v", err)
@@ -957,6 +977,11 @@ func AllocateContainerIP(c *gin.Context) {
 		return
 	}
 
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(&container, true, "allocate_ip"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
+		return
+	}
+
 	var req struct {
 		Count int `json:"count"`
 	}
@@ -1052,6 +1077,11 @@ func ReleaseContainerIP(c *gin.Context) {
 		return
 	}
 
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(&container, true, "release_ip"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
+		return
+	}
+
 	var req struct {
 		IP string `json:"ip" binding:"required"`
 	}
@@ -1122,6 +1152,11 @@ func SetContainerDNS(c *gin.Context) {
 		response.Error(c, 404, "容器不存在")
 		return
 	}
+
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(&container, true, "set_dns"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
+		return
+	}
 	
 	var req struct {
 		DNS []string `json:"dns" binding:"required"`
@@ -1170,6 +1205,11 @@ func UpdateContainerRemark(c *gin.Context) {
 
 	if container.UserID != username.(string) {
 		response.Error(c, 403, "无权操作此容器")
+		return
+	}
+
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(&container, true, "update_remark"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
 		return
 	}
 

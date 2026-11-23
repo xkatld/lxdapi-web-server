@@ -8,7 +8,9 @@ type Container struct {
 	UserID       string `gorm:"index;size:255"`
 	Image        string `gorm:"size:255"`
 	Password     string `gorm:"size:255"`
-	Status       string `gorm:"size:50"`
+	Status        string `gorm:"size:50"`
+	FreezeSource  string `gorm:"size:20;column:freeze_source" json:"freeze_source"`
+	TrafficLocked bool   `gorm:"-" json:"traffic_locked"`
 	CPU          int
 	Memory       int
 	Disk         int

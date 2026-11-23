@@ -101,6 +101,7 @@
 
         <div class="content-box rounded-lg border border-gray-200 p-3 lg:p-4 mb-3 lg:mb-4">
             <h2 class="text-sm lg:text-base font-semibold text-gray-800 mb-2 lg:mb-3">容器操作</h2>
+            <div id="containerLockNotice" class="hidden mb-2 lg:mb-3 px-3 py-2 rounded border border-red-200 bg-red-50 text-xs text-red-700"></div>
             <div class="flex flex-wrap gap-1.5 lg:gap-2">
                 <button onclick="startContainer()" class="px-2 py-1 lg:py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded transition whitespace-nowrap">启动</button>
                 <button onclick="stopContainer()" class="px-2 py-1 lg:py-1.5 text-xs font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded transition whitespace-nowrap">停止</button>
@@ -739,14 +740,121 @@
                     }
                 },
                 error: function(xhr) {
-                    if (xhr.status === 401 || xhr.status === 403) {
+                    if (xhr.status === 401) {
                         localStorage.removeItem('container_hash');
                         window.location.href = '/container/login';
+                    } else if (xhr.status === 403) {
+                        showToast('error', extractErrorMsg(xhr, '容器操作受限'));
                     } else {
                         console.error('获取容器信息失败');
                     }
                 }
             });
+        }
+
+        let currentContainerMeta = null;
+
+        function extractErrorMsg(xhr, fallback) {
+            return (xhr && xhr.responseJSON && (xhr.responseJSON.msg || xhr.responseJSON.message)) || fallback;
+        }
+
+        function getContainerStatusMeta(c) {
+            const status = (c.status || '').toLowerCase();
+            const freezeSource = (c.freeze_source || '').toLowerCase();
+            const trafficLocked = !!c.traffic_locked;
+            const isFrozen = status === 'frozen';
+            let lockReason = '';
+            if (trafficLocked) {
+                lockReason = '容器因流量超限已被锁定，所有变更操作已禁用';
+            } else if (isFrozen && freezeSource === 'admin') {
+                lockReason = '容器已被管理员冻结，所有变更操作已禁用';
+            } else if (isFrozen && freezeSource === 'system') {
+                lockReason = '容器已被系统冻结，所有变更操作已禁用';
+            } else if (isFrozen) {
+                lockReason = '容器已冻结，所有变更操作已禁用';
+            }
+            let badgeHtml = '';
+            if (status === 'running') {
+                badgeHtml = '<span class="px-2 py-0.5 text-xs font-medium text-green-700 bg-green-100 rounded-full flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>运行中</span>';
+            } else if (status === 'stopped') {
+                badgeHtml = '<span class="px-2 py-0.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-full">已停止</span>';
+            } else if (status === 'frozen') {
+                if (trafficLocked) {
+                    badgeHtml = '<span class="px-2 py-0.5 text-xs font-medium text-red-700 bg-red-100 rounded-full">已冻结（流量锁定）</span>';
+                } else if (freezeSource === 'admin') {
+                    badgeHtml = '<span class="px-2 py-0.5 text-xs font-medium text-red-700 bg-red-100 rounded-full">已冻结（管理员）</span>';
+                } else if (freezeSource === 'system') {
+                    badgeHtml = '<span class="px-2 py-0.5 text-xs font-medium text-red-700 bg-red-100 rounded-full">已冻结（系统）</span>';
+                } else {
+                    badgeHtml = '<span class="px-2 py-0.5 text-xs font-medium text-yellow-700 bg-yellow-100 rounded-full">已暂停</span>';
+                }
+            } else {
+                badgeHtml = '<span class="px-2 py-0.5 text-xs font-medium text-yellow-700 bg-yellow-100 rounded-full">其他</span>';
+            }
+            if (trafficLocked && status !== 'frozen') {
+                badgeHtml += '<span class="ml-1 px-2 py-0.5 text-xs font-medium text-red-700 bg-red-100 rounded-full">流量锁定</span>';
+            }
+            return {
+                status,
+                freezeSource,
+                trafficLocked,
+                isFrozen,
+                isRestricted: isFrozen || trafficLocked,
+                lockReason,
+                badgeHtml
+            };
+        }
+
+        function setActionButtonDisabled(selector, disabled, reason) {
+            const $el = $(selector);
+            if (!$el.length) return;
+            $el.prop('disabled', disabled);
+            if (disabled) {
+                $el.addClass('opacity-50 cursor-not-allowed').attr('title', reason || '当前状态不可用');
+            } else {
+                $el.removeClass('opacity-50 cursor-not-allowed').removeAttr('title');
+            }
+        }
+
+        function applyNetworkRestriction() {
+            if (!currentContainerMeta) return;
+            const disabled = currentContainerMeta.isRestricted;
+            const reason = currentContainerMeta.lockReason || '当前状态不可用';
+            [
+                'button[onclick="showAddIPv4PoolModal()"]',
+                'button[onclick="showAddIPv4MappingModal()"]',
+                'button[onclick="showAddIPv6PoolModal()"]',
+                'button[onclick="showAddIPv6MappingModal()"]',
+                'button[onclick="showAddReverseProxyModal()"]',
+                'button[onclick^="deleteIPv4Pool("]',
+                'button[onclick^="deleteIPv4Mapping("]',
+                'button[onclick^="deleteIPv6Pool("]',
+                'button[onclick^="deleteIPv6Mapping("]',
+                'button[onclick^="deleteReverseProxy("]'
+            ].forEach(sel => setActionButtonDisabled(sel, disabled, reason));
+        }
+
+        function updateContainerActionButtons(c) {
+            const meta = getContainerStatusMeta(c);
+            currentContainerMeta = meta;
+            const $notice = $('#containerLockNotice');
+            if (meta.lockReason) {
+                $notice.text(meta.lockReason).removeClass('hidden');
+            } else {
+                $notice.text('').addClass('hidden');
+            }
+            const restricted = meta.isRestricted;
+            const reason = meta.lockReason;
+            [
+                'button[onclick="startContainer()"]',
+                'button[onclick="stopContainer()"]',
+                'button[onclick="restartContainer()"]',
+                'button[onclick="openConsole()"]',
+                'button[onclick="showResetPasswordModal()"]',
+                'button[onclick="showReinstallModal()"]',
+                'button[onclick="showDNSModal()"]'
+            ].forEach(sel => setActionButtonDisabled(sel, restricted, reason));
+            applyNetworkRestriction();
         }
 
         function renderContainerInfo(c) {
@@ -755,19 +863,15 @@
             $('#containerName').text(containerName || '未知');
             $('#containerNameInput').val(containerName || '未知');
             
-            const status = (c.status || '').toLowerCase();
-            const statusBadge = status === 'running' ? 
-                '<span class="px-2 py-0.5 text-xs font-medium text-green-700 bg-green-100 rounded-full flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>运行中</span>' : 
-                status === 'stopped' ?
-                '<span class="px-2 py-0.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-full">已停止</span>' :
-                status === 'frozen' ?
-                '<span class="px-2 py-0.5 text-xs font-medium text-yellow-700 bg-yellow-100 rounded-full">已暂停</span>' :
-                '<span class="px-2 py-0.5 text-xs font-medium text-yellow-700 bg-yellow-100 rounded-full">其他</span>';
+            const meta = getContainerStatusMeta(c);
+            const status = meta.status;
+            const statusBadge = meta.badgeHtml;
 
             const iconColor = status === 'running' ? 'from-green-500 to-green-600' : 'from-gray-500 to-gray-600';
             $('#containerIconBg').removeClass().addClass(`w-12 h-12 bg-gradient-to-br ${iconColor} rounded-lg flex items-center justify-center`);
             
             $('#containerStatus').html(statusBadge);
+            updateContainerActionButtons(c);
             $('#containerImage').text(c.image || '未知镜像');
             $('#containerPassword').text(c.password || '-');
 
@@ -1069,7 +1173,7 @@
                 },
                 error: function(xhr) {
                     handleAuthError(xhr);
-                    showToast('error', '打开控制台失败');
+                    showToast('error', extractErrorMsg(xhr, '打开控制台失败'));
                 }
             });
         }
@@ -1193,7 +1297,7 @@
                 },
                 error: function(xhr) {
                     handleAuthError(xhr);
-                    showToast('error', actionName + '失败');
+                    showToast('error', extractErrorMsg(xhr, actionName + '失败'));
                 }
             });
         }
@@ -1248,7 +1352,7 @@
                 },
                 error: function(xhr) {
                     handleAuthError(xhr);
-                    showToast('error', '密码重置失败');
+                    showToast('error', extractErrorMsg(xhr, '密码重置失败'));
                 }
             });
         });
@@ -1397,13 +1501,13 @@
                 },
                 error: function(xhr) {
                     handleAuthError(xhr);
-                    showToast('error', '重装系统失败');
+                    showToast('error', extractErrorMsg(xhr, '重装系统失败'));
                 }
             });
         });
 
         function handleAuthError(xhr) {
-            if (xhr.status === 401 || xhr.status === 403) {
+            if (xhr.status === 401) {
                 localStorage.removeItem('container_hash');
                 window.location.href = '/container/login';
             }
@@ -1525,6 +1629,7 @@
             });
             html += '</tbody></table></div>';
             $('#ipv4PoolList').html(html);
+            applyNetworkRestriction();
         }
 
         function loadIPv4MappingBindings() {
@@ -1632,6 +1737,7 @@
             });
             html += '</div>';
             $('#ipv4MappingList').html(html);
+            applyNetworkRestriction();
         }
 
         function showAddIPv4MappingModal() {
@@ -1693,35 +1799,49 @@
             });
         }
 
-        function deleteIPv4Mapping(idsStr) {
+        function releasePortMappings(version, idsStr, reloadFn) {
             if (!confirm('确定要删除此端口映射规则吗？\n\n删除后将移除所有关联的NAT规则。')) return;
-
             const ids = idsStr.split(',').map(id => parseInt(id));
             let successCount = 0;
             let failCount = 0;
-            
+            let lastErrorMsg = '';
             const deletePromises = ids.map(id => {
                 return $.ajax({
-                    url: '/api/container/port-mapping/release?version=v4',
+                    url: `/api/container/port-mapping/release?version=${version}`,
                     type: 'POST',
                     headers: headers,
                     contentType: 'application/json',
                     data: JSON.stringify({ ids: [id] })
                 }).then(
-                    result => { successCount++; },
-                    error => { failCount++; }
+                    result => {
+                        if (result && result.code === 200) {
+                            successCount++;
+                        } else {
+                            failCount++;
+                            if (result && result.msg) lastErrorMsg = result.msg;
+                        }
+                    },
+                    xhr => {
+                        handleAuthError(xhr);
+                        failCount++;
+                        const msg = extractErrorMsg(xhr, '');
+                        if (msg) lastErrorMsg = msg;
+                    }
                 );
             });
-            
             Promise.all(deletePromises).finally(() => {
                 if (successCount > 0) {
                     showToast('success', `成功删除${successCount}条规则`);
-                    loadIPv4MappingBindings();
+                    reloadFn();
                 }
                 if (failCount > 0) {
-                    showToast('error', `${failCount}条规则删除失败`);
+                    showToast('error', lastErrorMsg || `${failCount}条规则删除失败`);
                 }
             });
+        }
+
+        function deleteIPv4Mapping(idsStr) {
+            releasePortMappings('v4', idsStr, loadIPv4MappingBindings);
         }
 
         function loadIPv6PoolBindings() {
@@ -1769,6 +1889,7 @@
             });
             html += '</tbody></table></div>';
             $('#ipv6PoolList').html(html);
+            applyNetworkRestriction();
         }
 
         function loadIPv6MappingBindings() {
@@ -1877,6 +1998,7 @@
             });
             html += '</div>';
             $('#ipv6MappingList').html(html);
+            applyNetworkRestriction();
         }
 
         function showAddIPv6MappingModal() {
@@ -1939,34 +2061,7 @@
         }
 
         function deleteIPv6Mapping(idsStr) {
-            if (!confirm('确定要删除此端口映射规则吗？\n\n删除后将移除所有关联的NAT规则。')) return;
-
-            const ids = idsStr.split(',').map(id => parseInt(id));
-            let successCount = 0;
-            let failCount = 0;
-            
-            const deletePromises = ids.map(id => {
-                return $.ajax({
-                    url: '/api/container/port-mapping/release?version=v6',
-                    type: 'POST',
-                    headers: headers,
-                    contentType: 'application/json',
-                    data: JSON.stringify({ ids: [id] })
-                }).then(
-                    result => { successCount++; },
-                    error => { failCount++; }
-                );
-            });
-            
-            Promise.all(deletePromises).finally(() => {
-                if (successCount > 0) {
-                    showToast('success', `成功删除${successCount}条规则`);
-                    loadIPv6MappingBindings();
-                }
-                if (failCount > 0) {
-                    showToast('error', `${failCount}条规则删除失败`);
-                }
-            });
+            releasePortMappings('v6', idsStr, loadIPv6MappingBindings);
         }
 
         function showAddIPv4PoolModal() {
@@ -2032,7 +2127,7 @@
                 },
                 error: function(xhr) {
                     handleAuthError(xhr);
-                    showToast('error', 'IPv4释放失败');
+                    showToast('error', extractErrorMsg(xhr, 'IPv4释放失败'));
                 }
             });
         }
@@ -2100,7 +2195,7 @@
                 },
                 error: function(xhr) {
                     handleAuthError(xhr);
-                    showToast('error', 'IPv6释放失败');
+                    showToast('error', extractErrorMsg(xhr, 'IPv6释放失败'));
                 }
             });
         }
@@ -2154,6 +2249,7 @@
             });
             html += '</tbody></table></div>';
             $('#reverseProxyList').html(html);
+            applyNetworkRestriction();
         }
 
         function showAddReverseProxyModal() {

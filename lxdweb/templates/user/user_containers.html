@@ -163,10 +163,10 @@
                     <button onclick="clearSelection()" class="text-xs text-blue-600 hover:text-blue-800 underline">清除选择</button>
                 </div>
                 <div class="flex gap-2 flex-wrap">
-                    <button onclick="batchStart()" class="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition">启动</button>
-                    <button onclick="batchStop()" class="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition">停止</button>
-                    <button onclick="batchRestart()" class="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition">重启</button>
-                    <button onclick="batchSync()" class="px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition">同步</button>
+                    <button id="btnBatchStart" onclick="batchStart()" class="px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition">启动</button>
+                    <button id="btnBatchStop" onclick="batchStop()" class="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg transition">停止</button>
+                    <button id="btnBatchRestart" onclick="batchRestart()" class="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition">重启</button>
+                    <button id="btnBatchSync" onclick="batchSync()" class="px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition">同步</button>
                 </div>
             </div>
         </div>
@@ -510,18 +510,51 @@
             }
         }
 
+        function getContainerStatusBadge(c) {
+            const status = (c.status || '').toLowerCase();
+            const freezeSource = (c.freeze_source || '').toLowerCase();
+            const trafficLocked = !!c.traffic_locked;
+            let badge = '';
+            if (status === 'running') {
+                badge = '<span class="px-2 py-0.5 text-xs font-medium text-green-700 bg-green-100 rounded-full flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>在线</span>';
+            } else if (status === 'stopped') {
+                badge = '<span class="px-2 py-0.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-full">离线</span>';
+            } else if (status === 'frozen') {
+                if (trafficLocked) {
+                    badge = '<span class="px-2 py-0.5 text-xs font-medium text-red-700 bg-red-100 rounded-full">已冻结（流量锁定）</span>';
+                } else if (freezeSource === 'admin') {
+                    badge = '<span class="px-2 py-0.5 text-xs font-medium text-red-700 bg-red-100 rounded-full">已冻结（管理员）</span>';
+                } else if (freezeSource === 'system') {
+                    badge = '<span class="px-2 py-0.5 text-xs font-medium text-red-700 bg-red-100 rounded-full">已冻结（系统）</span>';
+                } else {
+                    badge = '<span class="px-2 py-0.5 text-xs font-medium text-yellow-700 bg-yellow-100 rounded-full">已暂停</span>';
+                }
+            } else {
+                badge = '<span class="px-2 py-0.5 text-xs font-medium text-yellow-700 bg-yellow-100 rounded-full">其他</span>';
+            }
+            if (trafficLocked && status !== 'frozen') {
+                badge += '<span class="ml-1 px-2 py-0.5 text-xs font-medium text-red-700 bg-red-100 rounded-full">流量锁定</span>';
+            }
+            return badge;
+        }
+
+        function isContainerRestricted(c) {
+            const status = (c.status || '').toLowerCase();
+            return status === 'frozen' || !!c.traffic_locked;
+        }
+
         function renderCardView() {
             let dataToRender = getPageData();
             
             let html = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">';
             
             dataToRender.forEach(c => {
-                const status = (c.status || '').toLowerCase();
-                const statusBadge = status === 'running' ? 
-                    '<span class="px-2 py-0.5 text-xs font-medium text-green-700 bg-green-100 rounded-full flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>在线</span>' : 
-                    status === 'stopped' ?
-                    '<span class="px-2 py-0.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-full">离线</span>' :
-                    '<span class="px-2 py-0.5 text-xs font-medium text-yellow-700 bg-yellow-100 rounded-full">其他</span>';
+                const statusBadge = getContainerStatusBadge(c);
+                const restricted = isContainerRestricted(c);
+                const configDisabledAttr = restricted ? 'disabled title="容器当前处于冻结或流量锁定状态，不可修改配置"' : '';
+                const configDisabledClass = restricted ? 'opacity-50 cursor-not-allowed' : '';
+                const deleteDisabledAttr = restricted ? 'disabled title="容器当前处于冻结或流量锁定状态，不可删除"' : '';
+                const deleteDisabledClass = restricted ? 'opacity-50 cursor-not-allowed' : '';
                 
                 const memoryUsedMB = c.memory_usage_raw ? parseFloat(c.memory_usage_raw) / 1024 / 1024 : 0;
                 const memoryTotalStr = c.memory || '0';
@@ -576,8 +609,8 @@
                             <div class="flex gap-2">
                                 <a href="/user/container?name=${c.name}" class="flex-1 px-2 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded transition text-center block">详情</a>
                                 <button onclick="syncContainer('${c.name}')" class="flex-1 px-2 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded transition">同步</button>
-                                <button onclick="showConfigModal('${c.name}')" class="flex-1 px-2 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded transition">配置</button>
-                                <button onclick="deleteContainer('${c.name}')" class="flex-1 px-2 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded transition">删除</button>
+                                <button onclick="showConfigModal('${c.name}')" ${configDisabledAttr} class="flex-1 px-2 py-1.5 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded transition ${configDisabledClass}">配置</button>
+                                <button onclick="deleteContainer('${c.name}')" ${deleteDisabledAttr} class="flex-1 px-2 py-1.5 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded transition ${deleteDisabledClass}">删除</button>
                             </div>
                         </div>
                     </div>
@@ -616,12 +649,12 @@
             let dataToRender = getPageData();
             
             dataToRender.forEach(c => {
-                const status = (c.status || '').toLowerCase();
-                const statusBadge = status === 'running' ? 
-                    '<span class="px-2 py-0.5 text-xs font-medium text-green-700 bg-green-100 rounded-full flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>在线</span>' : 
-                    status === 'stopped' ?
-                    '<span class="px-2 py-0.5 text-xs font-medium text-gray-600 bg-gray-100 rounded-full">离线</span>' :
-                    '<span class="px-2 py-0.5 text-xs font-medium text-yellow-700 bg-yellow-100 rounded-full">其他</span>';
+                const statusBadge = getContainerStatusBadge(c);
+                const restricted = isContainerRestricted(c);
+                const configDisabledAttr = restricted ? 'disabled title="容器当前处于冻结或流量锁定状态，不可修改配置"' : '';
+                const configDisabledClass = restricted ? 'opacity-50 cursor-not-allowed' : '';
+                const deleteDisabledAttr = restricted ? 'disabled title="容器当前处于冻结或流量锁定状态，不可删除"' : '';
+                const deleteDisabledClass = restricted ? 'opacity-50 cursor-not-allowed' : '';
                 
                 const memoryUsedMB = c.memory_usage_raw ? parseFloat(c.memory_usage_raw) / 1024 / 1024 : 0;
                 const memoryTotalStr = c.memory || '0';
@@ -664,8 +697,8 @@
                             <div class="flex gap-1">
                                 <a href="/user/container?name=${c.name}" class="px-2 py-1 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition">详情</a>
                                 <button onclick="syncContainer('${c.name}')" class="px-2 py-1 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition">同步</button>
-                                <button onclick="showConfigModal('${c.name}')" class="px-2 py-1 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition">配置</button>
-                                <button onclick="deleteContainer('${c.name}')" class="px-2 py-1 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition">删除</button>
+                                <button onclick="showConfigModal('${c.name}')" ${configDisabledAttr} class="px-2 py-1 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition ${configDisabledClass}">配置</button>
+                                <button onclick="deleteContainer('${c.name}')" ${deleteDisabledAttr} class="px-2 py-1 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition ${deleteDisabledClass}">删除</button>
                             </div>
                         </td>
                     </tr>
@@ -877,6 +910,36 @@
                 $('#batchOperationBar').slideUp(200);
             }
             
+            const selectedNames = [];
+            selectedCheckboxes.each(function() {
+                selectedNames.push($(this).data('hostname'));
+            });
+            const selectedItems = containersData.filter(c => selectedNames.includes(c.name));
+            const hasRestricted = selectedItems.some(c => isContainerRestricted(c));
+            const allRunning = selectedItems.length > 0 && selectedItems.every(c => (c.status || '').toLowerCase() === 'running');
+            const allStopped = selectedItems.length > 0 && selectedItems.every(c => (c.status || '').toLowerCase() === 'stopped');
+
+            const setBatchBtn = (id, disabled, reason) => {
+                const $btn = $(id);
+                $btn.prop('disabled', disabled);
+                if (disabled) {
+                    $btn.addClass('opacity-50 cursor-not-allowed').attr('title', reason);
+                } else {
+                    $btn.removeClass('opacity-50 cursor-not-allowed').removeAttr('title');
+                }
+            };
+
+            if (hasRestricted) {
+                const reason = '所选容器包含冻结或流量锁定容器，不可执行批量启停重启';
+                setBatchBtn('#btnBatchStart', true, reason);
+                setBatchBtn('#btnBatchStop', true, reason);
+                setBatchBtn('#btnBatchRestart', true, reason);
+            } else {
+                setBatchBtn('#btnBatchStart', allRunning, allRunning ? '所选容器均已在运行' : '');
+                setBatchBtn('#btnBatchStop', allStopped, allStopped ? '所选容器均已停止' : '');
+                setBatchBtn('#btnBatchRestart', allStopped, allStopped ? '所选容器均已停止，请直接启动' : '');
+            }
+
             const totalCheckboxes = $('.container-checkbox').length;
             $('#selectAll').prop('checked', count === totalCheckboxes && count > 0);
             
@@ -952,7 +1015,8 @@
                     }
                 },
                 error: function(xhr) {
-                    showToast('error', `容器 ${name} 缓存同步失败`);
+                    const msg = (xhr.responseJSON && (xhr.responseJSON.msg || xhr.responseJSON.message)) || `容器 ${name} 缓存同步失败`;
+                    showToast('error', msg);
                 }
             });
         }
@@ -992,6 +1056,7 @@
         async function batchOperation(containers, action, actionName) {
             let successCount = 0;
             let failCount = 0;
+            let lastErrorMsg = '';
             let total = containers.length;
             
             showToast('info', `开始批量${actionName} ${total} 个容器...`);
@@ -1011,13 +1076,22 @@
                         successCount++;
                     } else {
                         failCount++;
+                        if (result.msg || result.message) {
+                            lastErrorMsg = result.msg || result.message;
+                        }
                     }
                 } catch (e) {
                     failCount++;
+                    if (e && e.responseJSON && (e.responseJSON.msg || e.responseJSON.message)) {
+                        lastErrorMsg = e.responseJSON.msg || e.responseJSON.message;
+                    }
                 }
             }
             
             let message = `批量${actionName}完成：成功 ${successCount}，失败 ${failCount}`;
+            if (failCount > 0 && lastErrorMsg) {
+                message += `（${lastErrorMsg}）`;
+            }
             showToast(failCount > 0 ? 'warning' : 'success', message);
             clearSelection();
             loadContainers();
@@ -1308,7 +1382,8 @@
                     }
                 },
                 error: function(xhr) {
-                    showToast('error', '暂停失败');
+                    const msg = (xhr.responseJSON && (xhr.responseJSON.msg || xhr.responseJSON.message)) || '暂停失败';
+                    showToast('error', msg);
                 }
             });
         }
@@ -1326,7 +1401,8 @@
                     }
                 },
                 error: function(xhr) {
-                    showToast('error', '恢复失败');
+                    const msg = (xhr.responseJSON && (xhr.responseJSON.msg || xhr.responseJSON.message)) || '恢复失败';
+                    showToast('error', msg);
                 }
             });
         }

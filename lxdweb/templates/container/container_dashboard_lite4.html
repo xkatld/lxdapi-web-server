@@ -718,7 +718,8 @@
                         }
                     },
                     error: function(xhr) {
-                        showToast('error', '密码重置失败');
+                        handleAuthError(xhr);
+                        showToast('error', extractErrorMsg(xhr, '密码重置失败'));
                     }
                 });
             });
@@ -753,7 +754,8 @@
                         }
                     },
                     error: function(xhr) {
-                        showToast('error', '重装请求失败');
+                        handleAuthError(xhr);
+                        showToast('error', extractErrorMsg(xhr, '重装请求失败'));
                     }
                 });
             });
@@ -830,7 +832,7 @@
                     }
                 },
                 error: function(xhr) {
-                    if (xhr.status === 401 || xhr.status === 403) {
+                    if (xhr.status === 401) {
                         localStorage.removeItem('container_hash');
                         window.location.href = '/container/login';
                     }
@@ -838,27 +840,136 @@
             });
         }
 
+
+        let currentContainerLockState = { restricted: false, reason: '' };
+
+        function extractErrorMsg(xhr, fallback) {
+            return (xhr && xhr.responseJSON && (xhr.responseJSON.msg || xhr.responseJSON.message)) || fallback;
+        }
+
+        function handleAuthError(xhr) {
+            if (xhr.status === 401) {
+                localStorage.removeItem('container_hash');
+                window.location.href = '/container/login';
+            }
+        }
+
+        function getContainerStatusMeta(c) {
+            const status = (c.status || '').toLowerCase();
+            const freezeSource = (c.freeze_source || '').toLowerCase();
+            const trafficLocked = !!c.traffic_locked;
+            const isFrozen = status === 'frozen';
+            let lockReason = '';
+            if (trafficLocked) {
+                lockReason = '容器因流量超限已被锁定，所有变更操作已禁用';
+            } else if (isFrozen && freezeSource === 'admin') {
+                lockReason = '容器已被管理员冻结，所有变更操作已禁用';
+            } else if (isFrozen && freezeSource === 'system') {
+                lockReason = '容器已被系统冻结，所有变更操作已禁用';
+            } else if (isFrozen) {
+                lockReason = '容器已冻结，所有变更操作已禁用';
+            }
+            let statusHtml = '';
+            let iconClass = 'from-yellow-500 to-yellow-600';
+            if (status === 'running') {
+                statusHtml = '<div class="badge badge-success gap-2 text-white">运行中</div>';
+                iconClass = 'from-green-500 to-green-600';
+            } else if (status === 'stopped') {
+                statusHtml = '<div class="badge badge-neutral gap-2">已停止</div>';
+                iconClass = 'from-gray-500 to-gray-600';
+            } else if (status === 'frozen') {
+                if (trafficLocked) {
+                    statusHtml = '<div class="badge badge-error gap-2 text-white">已冻结（流量锁定）</div>';
+                } else if (freezeSource === 'admin') {
+                    statusHtml = '<div class="badge badge-error gap-2 text-white">已冻结（管理员）</div>';
+                } else if (freezeSource === 'system') {
+                    statusHtml = '<div class="badge badge-error gap-2 text-white">已冻结（系统）</div>';
+                } else {
+                    statusHtml = '<div class="badge badge-warning gap-2">已暂停</div>';
+                }
+                iconClass = 'from-red-500 to-red-600';
+            } else {
+                statusHtml = `<div class="badge badge-warning gap-2">${status || '未知'}</div>`;
+            }
+            if (trafficLocked && status !== 'frozen') {
+                statusHtml += '<div class="badge badge-error gap-2 text-white ml-1">流量锁定</div>';
+            }
+            return {
+                status,
+                statusHtml,
+                iconClass,
+                restricted: isFrozen || trafficLocked,
+                lockReason
+            };
+        }
+
+        function applyContainerRestrictions() {
+            const state = currentContainerLockState;
+            let $notice = $('#containerLockNotice');
+            if (!$notice.length && $('#containerStatus').length) {
+                $notice = $('<div id="containerLockNotice" class="hidden mt-2 mb-3 px-3 py-2 rounded border border-red-200 bg-red-50 text-xs text-red-700"></div>');
+                const $card = $('#containerStatus').closest('.content-box, .glass-card, .card, .bg-white, .md-card');
+                if ($card.length) {
+                    $card.after($notice);
+                } else {
+                    $('#containerStatus').parent().after($notice);
+                }
+            }
+            if ($notice.length) {
+                if (state.restricted && state.lockReason) {
+                    $notice.text(state.lockReason).removeClass('hidden');
+                } else {
+                    $notice.text('').addClass('hidden');
+                }
+            }
+            const selectors = [
+                'button[onclick="startContainer()"]',
+                'button[onclick="stopContainer()"]',
+                'button[onclick="restartContainer()"]',
+                'button[onclick="openConsole()"]',
+                'button[onclick="showResetPasswordModal()"]',
+                'button[onclick="showReinstallModal()"]',
+                'button[onclick="showDNSModal()"]',
+                'button[onclick="showAddIPv4PoolModal()"]',
+                'button[onclick="showAddIPv4MappingModal()"]',
+                'button[onclick="showAddIPv6PoolModal()"]',
+                'button[onclick="showAddIPv6MappingModal()"]',
+                'button[onclick="showAddReverseProxyModal()"]',
+                'button[onclick^="deleteIPv4Pool("]',
+                'button[onclick^="deleteIPv4MappingGroup("]',
+                'button[onclick^="deleteIPv4Mapping("]',
+                'button[onclick^="deleteIPv6Pool("]',
+                'button[onclick^="deleteIPv6MappingGroup("]',
+                'button[onclick^="deleteIPv6Mapping("]',
+                'button[onclick^="deleteReverseProxy("]'
+            ];
+            selectors.forEach(sel => {
+                const $btn = $(sel);
+                if (!$btn.length) return;
+                $btn.prop('disabled', state.restricted);
+                if (state.restricted) {
+                    $btn.addClass('opacity-50 cursor-not-allowed').attr('title', state.lockReason || '当前状态不可用');
+                } else {
+                    $btn.removeClass('opacity-50 cursor-not-allowed').removeAttr('title');
+                }
+            });
+        }
+
+        $(document).ajaxComplete(function() {
+            if (currentContainerLockState && currentContainerLockState.restricted) {
+                applyContainerRestrictions();
+            }
+        });
+
         function renderContainerInfo(c) {
             containerName = c.name || '';
             $('#containerName').text(containerName || '未知容器');
+            const meta = getContainerStatusMeta(c);
+            currentContainerLockState = { restricted: meta.restricted, reason: meta.lockReason };
+            $('#containerStatus').html(meta.statusHtml);
+            applyContainerRestrictions();
             
-            const status = (c.status || '').toLowerCase();
-            let statusHtml = '';
-            let iconClass = 'from-gray-500 to-gray-600';
-            
-            if (status === 'running') {
-                statusHtml = '<div class="badge badge-success gap-2 text-white">运行中</div>';
-                iconClass = 'from-green-400 to-green-500';
-            } else if (status === 'stopped') {
-                statusHtml = '<div class="badge badge-neutral gap-2">已停止</div>';
-                iconClass = 'from-slate-400 to-slate-500';
-            } else {
-                statusHtml = `<div class="badge badge-warning gap-2">${status}</div>`;
-                iconClass = 'from-amber-400 to-amber-500';
-            }
-            
-            $('#containerStatus').html(statusHtml);
-            $('#containerIconBg').removeClass().addClass('bg-gradient-to-br ' + iconClass + ' w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm');
+            $('#containerIconBg').removeClass('from-blue-500 to-blue-600 from-green-500 to-green-600 from-green-400 to-green-500 from-gray-500 to-gray-600 from-yellow-500 to-yellow-600 from-red-500 to-red-600').addClass('bg-gradient-to-br ' + meta.iconClass);
             
             $('#containerImage').text(c.image || '未知镜像');
             $('#containerPassword').text(c.password || '-');
@@ -913,7 +1024,8 @@
                     }
                 },
                 error: function(xhr) {
-                    showToast('error', actionName + '失败');
+                    handleAuthError(xhr);
+                    showToast('error', extractErrorMsg(xhr, actionName + '失败'));
                 }
             });
         }
@@ -939,7 +1051,8 @@
                     }
                 },
                 error: function(xhr) {
-                    showToast('error', '打开控制台失败');
+                    handleAuthError(xhr);
+                    showToast('error', extractErrorMsg(xhr, '打开控制台失败'));
                 }
             });
         }
@@ -994,6 +1107,8 @@
                     }
                 },
                 error: function(xhr) {
+                    handleAuthError(xhr);
+                    showToast('error', extractErrorMsg(xhr, '加载镜像列表失败'));
                     $('#reinstallImage').html('<option value="">加载镜像列表失败</option>');
                 }
             });
@@ -1083,7 +1198,8 @@
                  success: function(res) {
                      if(res.code === 200) { showToast('success', '分配成功'); closeAddIPv4PoolModal(); loadIPv4PoolBindings(); }
                      else showToast('error', res.msg);
-                 }
+                 },
+                 error: function(xhr) { handleAuthError(xhr); showToast('error', extractErrorMsg(xhr, 'IPv4分配失败')); }
              });
         }
         function loadIPv4PoolBindings() {
@@ -1132,7 +1248,7 @@
                         showToast('error', res.msg || 'IPv4释放失败');
                     }
                 },
-                error: function() { showToast('error', 'IPv4释放失败'); }
+                error: function(xhr) { handleAuthError(xhr); showToast('error', extractErrorMsg(xhr, 'IPv4释放失败')); }
             });
         }
 
@@ -1157,7 +1273,8 @@
                  success: function(res) {
                      if(res.code === 200) { showToast('success', '添加成功'); closeAddIPv4MappingModal(); loadIPv4MappingBindings(); }
                      else showToast('error', res.msg);
-                 }
+                 },
+                 error: function(xhr) { handleAuthError(xhr); showToast('error', extractErrorMsg(xhr, '创建规则失败')); }
              });
         }
         function loadIPv4MappingBindings() {
@@ -1252,14 +1369,15 @@
                  success: function(res) {
                      if(res.code === 200) { showToast('success', '删除成功'); loadIPv4MappingBindings(); }
                      else showToast('error', res.msg);
-                 }
+                 },
+                 error: function(xhr) { handleAuthError(xhr); showToast('error', extractErrorMsg(xhr, '删除失败')); }
              });
         }
 
         function showAddIPv6PoolModal() { document.getElementById('addIPv6PoolModal').showModal(); }
         function closeAddIPv6PoolModal() { document.getElementById('addIPv6PoolModal').close(); }
         function submitAddIPv6Pool() { 
-             $.ajax({ url: '/api/container/ip/allocate?version=v6', type: 'POST', headers: headers, contentType: 'application/json', data: JSON.stringify({name: containerName, count:1}), success: function(res){ if(res.code==200){showToast('success','分配成功'); closeAddIPv6PoolModal(); loadIPv6PoolBindings();} else showToast('error', res.msg); }});
+             $.ajax({ url: '/api/container/ip/allocate?version=v6', type: 'POST', headers: headers, contentType: 'application/json', data: JSON.stringify({name: containerName, count:1}), success: function(res){ if(res.code==200){showToast('success','分配成功'); closeAddIPv6PoolModal(); loadIPv6PoolBindings();} else showToast('error', res.msg); }, error: function(xhr) { handleAuthError(xhr); showToast('error', extractErrorMsg(xhr, 'IPv6分配失败')); } });
         }
         function loadIPv6PoolBindings() {
              $.ajax({ url: `/api/container/ip?version=v6`, type: 'GET', headers: headers, success: function(res){
@@ -1307,7 +1425,7 @@
                         showToast('error', res.msg || 'IPv6释放失败');
                     }
                 },
-                error: function() { showToast('error', 'IPv6释放失败'); }
+                error: function(xhr) { handleAuthError(xhr); showToast('error', extractErrorMsg(xhr, 'IPv6释放失败')); }
             });
         }
 
@@ -1326,7 +1444,7 @@
                  port_count: parseInt($('#ipv6MappingPortCount').val()),
                  description: $('#ipv6MappingDescription').val()
              };
-             $.ajax({ url: '/api/container/port-mapping/allocate?version=v6', type: 'POST', headers: headers, contentType: 'application/json', data: JSON.stringify(data), success: function(res){ if(res.code==200){showToast('success','添加成功'); closeAddIPv6MappingModal(); loadIPv6MappingBindings();} else showToast('error', res.msg); }});
+             $.ajax({ url: '/api/container/port-mapping/allocate?version=v6', type: 'POST', headers: headers, contentType: 'application/json', data: JSON.stringify(data), success: function(res){ if(res.code==200){showToast('success','添加成功'); closeAddIPv6MappingModal(); loadIPv6MappingBindings();} else showToast('error', res.msg); }, error: function(xhr) { handleAuthError(xhr); showToast('error', extractErrorMsg(xhr, '创建规则失败')); } });
         }
         function loadIPv6MappingBindings() {
              $.ajax({ url: `/api/container/port-mapping?version=v6`, type: 'GET', headers: headers, success: function(res){
@@ -1414,7 +1532,7 @@
         function deleteIPv6MappingGroup(idsStr) {
              if(!confirm('确认删除此规则？')) return;
              const ids = idsStr.split(',').map(id => parseInt(id));
-             $.ajax({ url: '/api/container/port-mapping/release?version=v6', type: 'POST', headers: headers, contentType: 'application/json', data: JSON.stringify({ids: ids}), success: function(res){ if(res.code==200){showToast('success','删除成功'); loadIPv6MappingBindings();} else showToast('error', res.msg); }});
+             $.ajax({ url: '/api/container/port-mapping/release?version=v6', type: 'POST', headers: headers, contentType: 'application/json', data: JSON.stringify({ids: ids}), success: function(res){ if(res.code==200){showToast('success','删除成功'); loadIPv6MappingBindings();} else showToast('error', res.msg); }, error: function(xhr) { handleAuthError(xhr); showToast('error', extractErrorMsg(xhr, '删除失败')); } });
         }
 
         function showAddReverseProxyModal() { document.getElementById('addReverseProxyModal').showModal(); }
@@ -1434,7 +1552,7 @@
                  data.ssl_cert = $('#reverseProxySSLCert').val();
                  data.ssl_key = $('#reverseProxySSLKey').val();
              }
-             $.ajax({ url: '/api/container/nginx/proxies', type: 'POST', headers: headers, contentType: 'application/json', data: JSON.stringify(data), success: function(res){ if(res.code==200){showToast('success','添加成功'); closeAddReverseProxyModal(); loadReverseProxyRules();} else showToast('error', res.msg); }});
+             $.ajax({ url: '/api/container/nginx/proxies', type: 'POST', headers: headers, contentType: 'application/json', data: JSON.stringify(data), success: function(res){ if(res.code==200){showToast('success','添加成功'); closeAddReverseProxyModal(); loadReverseProxyRules();} else showToast('error', res.msg); }, error: function(xhr) { handleAuthError(xhr); showToast('error', extractErrorMsg(xhr, '添加失败')); } });
         }
         function loadReverseProxyRules() {
              $.ajax({ url: '/api/container/nginx/proxies', type: 'GET', headers: headers, success: function(res){
@@ -1466,7 +1584,7 @@
         }
         function deleteReverseProxy(id) {
              if(!confirm('确认删除？')) return;
-             $.ajax({ url: `/api/container/nginx/proxies/${id}`, type: 'DELETE', headers: headers, success: function(res){ if(res.code==200){showToast('success','删除成功'); loadReverseProxyRules();} else showToast('error', res.msg); }});
+             $.ajax({ url: `/api/container/nginx/proxies/${id}`, type: 'DELETE', headers: headers, success: function(res){ if(res.code==200){showToast('success','删除成功'); loadReverseProxyRules();} else showToast('error', res.msg); }, error: function(xhr) { handleAuthError(xhr); showToast('error', extractErrorMsg(xhr, '删除失败')); } });
         }
 
         function copyHash() {
@@ -1527,6 +1645,8 @@
                     document.getElementById('dnsModal').showModal();
                 },
                 error: function(xhr) {
+                    handleAuthError(xhr);
+                    showToast('error', extractErrorMsg(xhr, '获取DNS设置失败'));
                     $('#dnsServers').val('');
                     document.getElementById('dnsModal').showModal();
                 }
@@ -1565,7 +1685,8 @@
                     }
                 },
                 error: function(xhr) {
-                    showToast('error', 'DNS设置失败');
+                    handleAuthError(xhr);
+                    showToast('error', extractErrorMsg(xhr, 'DNS设置失败'));
                 }
             });
         }

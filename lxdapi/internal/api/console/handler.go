@@ -3,6 +3,8 @@ package console
 import (
 	"encoding/json"
 	"lxdapi/internal/console"
+	"lxdapi/internal/service"
+	"lxdapi/pkg/auth"
 	"lxdapi/pkg/logger"
 	"lxdapi/pkg/response"
 	"net/http"
@@ -39,7 +41,18 @@ func CreateToken(c *gin.Context) {
 		response.Error(c, 400, "参数错误")
 		return
 	}
-	
+
+	if auth_level_val, exists := c.Get("auth_level"); exists {
+		if auth_level, ok := auth_level_val.(auth.APILevel); ok {
+			if auth_level == auth.LevelUser || auth_level == auth.LevelContainer {
+				if deny_code, deny_msg := service.CheckContainerOperationByName(req.Hostname, auth_level == auth.LevelUser, "console"); deny_code != 0 {
+					response.Error(c, deny_code, deny_msg)
+					return
+				}
+			}
+		}
+	}
+
 	token, err := console.GenerateToken(req.Hostname)
 	if err != nil {
 		response.Error(c, 500, "生成令牌失败")

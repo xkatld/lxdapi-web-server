@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"lxdapi/internal/db"
+	"lxdapi/internal/service"
 	"lxdapi/models"
 	"lxdapi/pkg/logger"
 	"lxdapi/pkg/response"
@@ -507,6 +508,11 @@ func (h *APIHandler) CreateUserProxy(c *gin.Context) {
 		response.Error(c, 403, "无权操作此容器")
 		return
 	}
+
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(&container, true, "create_proxy"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
+		return
+	}
 	
 	h.createProxyInternal(c, req, container)
 }
@@ -526,6 +532,11 @@ func (h *APIHandler) UpdateUserProxy(c *gin.Context) {
 		response.Error(c, 403, "无权操作此规则")
 		return
 	}
+
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(&container, true, "update_proxy"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
+		return
+	}
 	
 	h.UpdateProxy(c)
 }
@@ -543,6 +554,11 @@ func (h *APIHandler) DeleteUserProxy(c *gin.Context) {
 	var container models.Container
 	if err := db.DB.Where("name = ? AND user_id = ?", proxy.ContainerName, username).First(&container).Error; err != nil {
 		response.Error(c, 403, "无权操作此规则")
+		return
+	}
+
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(&container, true, "delete_proxy"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
 		return
 	}
 	
@@ -585,6 +601,11 @@ func (h *APIHandler) CreateContainerProxy(c *gin.Context) {
 		response.Error(c, 404, "容器不存在")
 		return
 	}
+
+	if deny_code, deny_msg := service.CheckContainerOperationAllowed(&container, false, "create_proxy"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
+		return
+	}
 	
 	h.createProxyInternal(c, req, container)
 }
@@ -603,6 +624,11 @@ func (h *APIHandler) UpdateContainerProxy(c *gin.Context) {
 		response.Error(c, 403, "无权操作此规则")
 		return
 	}
+
+	if deny_code, deny_msg := service.CheckContainerOperationByName(proxy.ContainerName, false, "update_proxy"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
+		return
+	}
 	
 	h.UpdateProxy(c)
 }
@@ -619,6 +645,11 @@ func (h *APIHandler) DeleteContainerProxy(c *gin.Context) {
 	
 	if proxy.ContainerName != containerName {
 		response.Error(c, 403, "无权操作此规则")
+		return
+	}
+
+	if deny_code, deny_msg := service.CheckContainerOperationByName(proxy.ContainerName, false, "delete_proxy"); deny_code != 0 {
+		response.Error(c, deny_code, deny_msg)
 		return
 	}
 	
