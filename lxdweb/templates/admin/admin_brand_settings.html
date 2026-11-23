@@ -58,7 +58,6 @@
             <a id="appearanceTabBtn" class="custom-tab-active px-3 py-1.5 text-xs font-medium rounded cursor-pointer transition whitespace-nowrap" onclick="switchTab('appearance')">外观设置</a>
             <a id="noticeTabBtn" class="custom-tab-inactive px-3 py-1.5 text-xs font-medium rounded cursor-pointer transition whitespace-nowrap" onclick="switchTab('notice')">公告设置</a>
             <a id="generalTabBtn" class="custom-tab-inactive px-3 py-1.5 text-xs font-medium rounded cursor-pointer transition whitespace-nowrap" onclick="switchTab('general')">通用设置</a>
-            <a id="templateTabBtn" class="custom-tab-inactive px-3 py-1.5 text-xs font-medium rounded cursor-pointer transition whitespace-nowrap" onclick="switchTab('template')">模板设置</a>
         </div>
 
         <form id="brandForm">
@@ -331,36 +330,6 @@
                         </div>
                     </div>
                 </div>
-
-                <div id="templateTab" class="tab-pane" style="display: none;">
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-                        <div class="content-box border border-gray-200 rounded-lg p-4 shadow-sm">
-                            <h3 class="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-1.5">
-                                <span class="iconify" data-icon="mdi:file-document-outline" data-width="18"></span>
-                                Lite 模板
-                            </h3>
-                            <div class="space-y-2">
-                                <label class="block text-xs font-medium text-gray-700 mb-1">选择模板文件</label>
-                                <select id="containerLiteTemplate" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    <option value="lite">lite</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="content-box border border-gray-200 rounded-lg p-4 shadow-sm">
-                            <h3 class="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-1.5">
-                                <span class="iconify" data-icon="mdi:file-document-outline" data-width="18"></span>
-                                Base 模板
-                            </h3>
-                            <div class="space-y-2">
-                                <label class="block text-xs font-medium text-gray-700 mb-1">选择模板文件</label>
-                                <select id="containerBaseTemplate" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                                    <option value="base">base</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <div class="flex gap-3">
@@ -376,9 +345,9 @@
     
     <script>
         function switchTab(tabName) {
-            $('#appearanceTab, #noticeTab, #generalTab, #templateTab').hide();
-            $('#appearanceTabBtn, #noticeTabBtn, #generalTabBtn, #templateTabBtn').removeClass('custom-tab-active').addClass('custom-tab-inactive');
-            
+            $('#appearanceTab, #noticeTab, #generalTab').hide();
+            $('#appearanceTabBtn, #noticeTabBtn, #generalTabBtn').removeClass('custom-tab-active').addClass('custom-tab-inactive');
+
             if (tabName === 'appearance') {
                 $('#appearanceTab').show();
                 $('#appearanceTabBtn').removeClass('custom-tab-inactive').addClass('custom-tab-active');
@@ -388,36 +357,13 @@
             } else if (tabName === 'general') {
                 $('#generalTab').show();
                 $('#generalTabBtn').removeClass('custom-tab-inactive').addClass('custom-tab-active');
-            } else if (tabName === 'template') {
-                $('#templateTab').show();
-                $('#templateTabBtn').removeClass('custom-tab-inactive').addClass('custom-tab-active');
             }
         }
 
         $(document).ready(function() {
-            loadTemplateOptions();
             loadSettings();
             loadAcmePanel();
         });
-
-        function loadTemplateOptions() {
-            $.get('/api/admin/container-templates', function(result) {
-                if (result.code === 200 && result.data) {
-                    const liteSelect = $('#containerLiteTemplate');
-                    const baseSelect = $('#containerBaseTemplate');
-                    
-                    liteSelect.empty();
-                    result.data.lite.forEach(function(t) {
-                        liteSelect.append($('<option>').val(t).text(t));
-                    });
-                    
-                    baseSelect.empty();
-                    result.data.base.forEach(function(t) {
-                        baseSelect.append($('<option>').val(t).text(t));
-                    });
-                }
-            });
-        }
 
         function loadSettings() {
             $.ajax({
@@ -458,8 +404,6 @@
                         $('#faviconUrl').val(result.data.favicon_url || '');
                         $('#footerText').val(result.data.footer_text);
                         $('#useLocalCDN').prop('checked', result.data.use_local_cdn || false);
-                        $('#containerLiteTemplate').val(result.data.container_lite_template || 'lite');
-                        $('#containerBaseTemplate').val(result.data.container_base_template || 'base');
                         $('#tlsCertContent').val(result.data.tls_cert_content || '');
                         $('#tlsKeyContent').val(result.data.tls_key_content || '');
                     }
@@ -505,8 +449,6 @@
                     favicon_url: $('#faviconUrl').val().trim(),
                     footer_text: $('#footerText').val().trim(),
                     use_local_cdn: $('#useLocalCDN').is(':checked'),
-                    container_lite_template: $('#containerLiteTemplate').val().trim() || 'lite',
-                    container_base_template: $('#containerBaseTemplate').val().trim() || 'base',
                     tls_cert_content: tlsCertContent,
                     tls_key_content: tlsKeyContent
                 }),

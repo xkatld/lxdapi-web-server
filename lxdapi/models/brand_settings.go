@@ -28,8 +28,6 @@ type BrandSettings struct {
 	ContainerNoticeOpacity int     `gorm:"default:85" json:"container_notice_opacity"`
 	FaviconUrl           string    `gorm:"size:500;default:''" json:"favicon_url"`
 	FooterText           string    `gorm:"size:200;default:'LXD API 容器管理平台'" json:"footer_text"`
-	ContainerLiteTemplate string   `gorm:"size:50;default:'lite1'" json:"container_lite_template"`
-	ContainerBaseTemplate string   `gorm:"size:50;default:'base1'" json:"container_base_template"`
 	UseLocalCDN          bool     `gorm:"default:false" json:"use_local_cdn"`
 	TLSCertContent       string   `gorm:"type:text;default:''" json:"tls_cert_content"`
 	TLSKeyContent        string   `gorm:"type:text;default:''" json:"tls_key_content"`

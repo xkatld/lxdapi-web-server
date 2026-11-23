@@ -118,8 +118,6 @@ func (s *BrandService) UpdateSettings(settings *models.BrandSettings) error {
 	existing.ContainerNoticeOpacity = settings.ContainerNoticeOpacity
 	existing.FaviconUrl = settings.FaviconUrl
 	existing.FooterText = settings.FooterText
-	existing.ContainerLiteTemplate = settings.ContainerLiteTemplate
-	existing.ContainerBaseTemplate = settings.ContainerBaseTemplate
 	existing.UseLocalCDN = settings.UseLocalCDN
 
 	cert_content := strings.TrimSpace(settings.TLSCertContent)

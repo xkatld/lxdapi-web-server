@@ -151,7 +151,6 @@ func main() {
 	user.InitContainerService(containerService)
 	container.InitContainerService(containerService)
 	admin.InitBrandService()
-	admin.SetEmbeddedFS(embeddedFiles)
 
 	executor.RegisterTaskExecutor("create", func(ctx context.Context, name string, paramsJSON string) error {
 		var params map[string]interface{}
@@ -501,7 +500,6 @@ func main() {
 		adminAPI.PUT("/templates/:fingerprint/permission", admin.SetTemplatePermission)
 		adminAPI.GET("/brand-settings", admin.GetBrandSettings)
 		adminAPI.POST("/brand-settings", admin.UpdateBrandSettings)
-		adminAPI.GET("/container-templates", admin.GetContainerTemplates)
 		adminAPI.GET("/port-range/config", admin.GetPortRangeConfig)
 		adminAPI.POST("/port-range/config", admin.SavePortRangeConfig)
 		adminAPI.GET("/ip-pool/settings", admin.GetIPPoolSettings)
